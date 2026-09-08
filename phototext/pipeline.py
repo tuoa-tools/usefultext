@@ -207,6 +207,16 @@ def process_page(source: PageSource, settings: Settings, *, sharpness: float | N
             rotation, rec.trials = choose_orientation(img_d, result, settings)
             if rotation:
                 result = read(rotate(img_d, rotation))
+        elif result.flipped_fraction >= settings.flip_fraction:
+            # The read looks strong only because the classifier turned each
+            # line the right way up; the page itself is upside down and its
+            # reading order would come out reversed. Re-read it rotated.
+            rec.weak_reason = f"classifier flipped {result.flipped_fraction:.0%} of lines (upside down?)"
+            rec.trials = {"0": round(result.score, 2)}
+            flipped = read(rotate(img_d, 180))
+            rec.trials["180"] = round(flipped.score, 2)
+            if flipped.n_regions > 0 and flipped.flipped_fraction < settings.flip_fraction:
+                result, rotation = flipped, 180
     rec.rotation = rotation
     rec.width, rec.height = rotated_size((full_w, full_h), rotation)
 

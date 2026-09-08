@@ -5,9 +5,9 @@ __pycache__/
 .DS_Store
 
 # Runtime outputs and personal inputs are never committed.
-output/
+output*/
 Documents/
-fixtures/synthetic/
+fixtures/derived/
 
 # Reference material from a previous project — not part of this codebase.
 redaction_detection_poc/

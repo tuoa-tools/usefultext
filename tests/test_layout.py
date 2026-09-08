@@ -75,14 +75,24 @@ def test_geometry_is_independent_of_corner_order():
 
 
 def test_curled_heading_halves_join_one_line():
-    # Right half lifted 30px by page curl (tolerance would be ~29px).
+    # Right half lifted 30px by page curl (tolerance would be ~29px). The
+    # heading is only 1.15× body height but centred → still a heading.
     left = box(301, 182, 237, 56, "Our Iceberg")
     right = box(522, 150, 333, 60, "Will Never Melt")
-    body = [box(190, 300 + i * 52, 770, 48, f"body {i} " * 5) for i in range(8)]
+    body = [box(190, 300 + i * 52, 770, 52, f"body {i} " * 5) for i in range(8)]
+    body.append(box(190, 300 + 8 * 52, 400, 52, "short last line of a paragraph."))
+    body.append(box(190, 300 + 9 * 52, 400, 52, "short left-aligned line no period"))
     lines = layout_page([right, left] + body)
     assert lines[0].text == "Our Iceberg Will Never Melt"
     assert lines[0].heading is True
     assert not any(ln.heading for ln in lines[1:])
+
+
+def test_left_aligned_tall_short_line_is_a_heading():
+    head = box(190, 100, 400, 70, "Chapter Two")
+    body = [box(190, 220 + i * 52, 770, 48, f"body {i} " * 5) for i in range(8)]
+    lines = layout_page([head] + body)
+    assert lines[0].heading is True
 
 
 def test_full_width_tall_line_is_not_a_heading():

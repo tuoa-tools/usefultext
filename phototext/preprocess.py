@@ -66,16 +66,19 @@ def downscale(img: Image.Image, max_long_edge: int) -> tuple[Image.Image, float]
 
 
 def sharpness_score(img: Image.Image, norm_long_edge: int = 1000,
-                    edge_percentile: float = 95.0) -> float:
+                    edge_min_gradient: float = 20.0) -> float:
     """Variance-of-Laplacian blur check, measured over edge pixels only.
 
     A plain Laplacian variance over the whole frame mostly measures how much
     text is on the page (a dense blurry page outscored a sparse sharp one on
-    the real samples). Restricting it to the strongest-gradient pixels — text
-    strokes — measures how crisp the edges themselves are. The grey copy is
-    normalised to a fixed long edge so the number is comparable across
-    cameras. Reported as the RMS (same units as pixel intensity); higher =
-    sharper. Threshold: Settings.blur_threshold, calibrated on real photos."""
+    the real samples). Restricting it to edge pixels — gradient magnitude of
+    at least `edge_min_gradient` grey levels, i.e. text strokes — measures
+    how crisp the edges themselves are, independent of how many there are
+    (a percentile mask failed on sparse pages: it filled up with blank paper).
+    The grey copy is normalised to a fixed long edge so the number is
+    comparable across cameras. Reported as the RMS (same units as pixel
+    intensity); higher = sharper. Threshold: Settings.blur_threshold,
+    calibrated on real photos. A page with no edges at all scores 0."""
     grey = img.convert("L")
     grey, _ = downscale(grey, norm_long_edge)
     a = np.asarray(grey, dtype=np.float32)
@@ -85,7 +88,7 @@ def sharpness_score(img: Image.Image, norm_long_edge: int = 1000,
            - 4.0 * a[1:-1, 1:-1])
     gy, gx = np.gradient(a)
     grad = np.hypot(gx, gy)[1:-1, 1:-1]
-    mask = grad >= np.percentile(grad, edge_percentile)
+    mask = grad >= edge_min_gradient
     if not mask.any():
         return 0.0
     return float(np.sqrt(np.mean(lap[mask] ** 2)))

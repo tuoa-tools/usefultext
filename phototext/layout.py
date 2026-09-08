@@ -105,25 +105,37 @@ def _body_lines(lines: list[Line]) -> list[Line]:
     return body if len(body) >= 3 else lines
 
 
+_SENTENCE_END = ".,;:"
+
+
 def mark_headings(lines: list[Line], height_ratio: float = 1.2, max_chars: int = 60,
                   max_width_ratio: float = 0.8, min_lines: int = 5) -> None:
-    """Flag lines that are taller than the body median, short, and narrower
-    than a body line. Needs a few lines on the page for the medians to mean
-    anything."""
+    """Flag headings. A candidate must be short (chars), narrower than a body
+    line, contain letters and not end like a sentence. It is then a heading if
+    EITHER it is notably taller than the body median (left-aligned headings)
+    OR it is centred on the body column and at least body height (book
+    chapter headings, whose size gain is often too small to trust alone —
+    1.15× on the real samples, where curled body lines reach 1.3×). Short
+    body lines (paragraph ends) are left-aligned, so centring separates them.
+    Needs a few lines on the page for the medians to mean anything."""
     if len(lines) < min_lines:
         return
     body = _body_lines(lines)
     h_med = median(line.height for line in body) or 1.0
     w_med = median(line.width for line in body) or 1.0
+    body_x0 = median(line.x0 for line in body)
+    body_cx = median((line.x0 + line.x1) / 2 for line in body)
     for line in lines:
         text = line.text.strip()
-        if not text or len(text) > max_chars:
+        if not text or len(text) > max_chars or not any(ch.isalpha() for ch in text):
             continue
-        if not any(ch.isalpha() for ch in text):
+        if text[-1] in _SENTENCE_END or line.width > max_width_ratio * w_med:
             continue
-        if line.width > max_width_ratio * w_med:
-            continue
-        if line.height >= height_ratio * h_med:
+        taller = line.height >= height_ratio * h_med
+        centred = (abs((line.x0 + line.x1) / 2 - body_cx) <= 0.05 * w_med
+                   and line.x0 - body_x0 >= 0.08 * w_med
+                   and line.height >= h_med)
+        if taller or centred:
             line.heading = True
 
 

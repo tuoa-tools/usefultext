@@ -104,6 +104,7 @@ class OcrRegion:
     text: str
     conf: float
     quad: list[list[float]]
+    flipped: bool = False          # the angle classifier turned this line 180°
 
     @property
     def bbox(self) -> tuple[float, float, float, float]:
@@ -148,7 +149,8 @@ class OcrRegion:
         return self.width * self.height
 
     def scaled(self, factor: float) -> "OcrRegion":
-        return OcrRegion(self.text, self.conf, [[x * factor, y * factor] for x, y in self.quad])
+        return OcrRegion(self.text, self.conf, [[x * factor, y * factor] for x, y in self.quad],
+                         self.flipped)
 
     def to_dict(self) -> dict:
         x0, y0, x1, y1 = self.bbox
@@ -172,6 +174,8 @@ class OcrPageResult:
     regions: list[OcrRegion] = field(default_factory=list)
     dropped_regions: int = 0        # below OCR_REGION_MIN_CONF (or caller's value)
     elapsed: float = 0.0
+    flipped_fraction: float = 0.0   # share of lines the angle classifier turned 180°
+                                    # (≈0 on an upright page, ≈0.9 on an upside-down one)
 
     @property
     def low_confidence(self) -> bool:
@@ -202,8 +206,89 @@ def _to_engine_input(source):
     return source
 
 
+CLS_THRESH = 0.9   # RapidOCR only applies a 180° flip above this classifier score
+
+
+def _call_engine(engine, img, kwargs: dict):
+    """Run the engine and also return the per-line angle-classifier labels,
+    aligned with the returned boxes.
+
+    RapidOCR's public __call__ discards the classifier output, but its steps
+    are ordinary methods, so run them here and keep cls_res. The labels tell
+    whether the whole page is upside down (most lines flipped) at zero extra
+    cost, and which single lines were flipped (occasionally wrongly). Falls
+    back to the plain call if a future version renames things."""
+    needed = ("update_params", "load_img", "preprocess_img", "run_ocr_steps", "build_final_output")
+    if not all(hasattr(engine, n) for n in needed):
+        return engine(img, **kwargs), None
+    try:
+        engine.update_params(**kwargs)
+        ori_img = engine.load_img(img)
+        pre_img, op_record = engine.preprocess_img(ori_img)
+        det_res, cls_res, rec_res, crops = engine.run_ocr_steps(pre_img, op_record)
+        labels = list(getattr(cls_res, "cls_res", None) or [])
+        # build_final_output drops empty-text lines; keep labels aligned by
+        # pairing them with the recogniser output before that filter.
+        txts_before = list(getattr(rec_res, "txts", None) or [])
+        result = engine.build_final_output(ori_img, det_res, cls_res, rec_res, crops, op_record)
+        if labels and len(labels) == len(txts_before):
+            labels = [lbl for lbl, txt in zip(labels, txts_before) if txt and txt.strip()]
+            if len(labels) != len(getattr(result, "txts", None) or []):
+                labels = None
+        else:
+            labels = None
+        return result, labels
+    except Exception:
+        return engine(img, **kwargs), None
+
+
+def _flipped_fraction(cls_labels) -> float:
+    if not cls_labels:
+        return 0.0
+    decided = [(str(lbl), float(score)) for lbl, score in cls_labels if float(score) >= CLS_THRESH]
+    if not decided:
+        return 0.0
+    return sum(1 for lbl, _ in decided if lbl == "180") / len(decided)
+
+
+def _is_flip(label) -> bool:
+    try:
+        return str(label[0]) == "180" and float(label[1]) >= CLS_THRESH
+    except Exception:
+        return False
+
+
+def _second_opinion(engine, source, region: OcrRegion, kwargs: dict) -> OcrRegion:
+    """Re-read one line's crop with the angle classifier off; return whichever
+    read the recogniser is more confident about."""
+    try:
+        from PIL import Image
+        if isinstance(source, Image.Image):
+            img = source
+        elif isinstance(source, np.ndarray):
+            img = Image.fromarray(np.ascontiguousarray(source[:, :, ::-1]))
+        else:
+            return region
+        x0, y0, x1, y1 = region.bbox
+        pad = max(4.0, 0.3 * region.height)
+        crop = img.crop((max(0, int(x0 - pad)), max(0, int(y0 - pad)),
+                         min(img.width, int(x1 + pad)), min(img.height, int(y1 + pad))))
+        alt = engine(_to_engine_input(crop), **dict(kwargs, use_cls=False))
+        txts = list(getattr(alt, "txts", None) or [])
+        scores = list(getattr(alt, "scores", None) or [])
+        if not txts:
+            return region
+        best = max(range(len(txts)), key=lambda i: scores[i])
+        if scores[best] > region.conf and txts[best].strip():
+            return OcrRegion(text=txts[best].strip(), conf=float(scores[best]), quad=region.quad,
+                             flipped=False)
+    except Exception:
+        pass
+    return region
+
+
 def _run(source, *, use_cls: bool = True, min_region_conf: float = OCR_REGION_MIN_CONF,
-         box_thresh: float | None = None) -> OcrPageResult:
+         box_thresh: float | None = None, second_opinion: bool = True) -> OcrPageResult:
     engine = _ensure_engine()
     # Every flag is passed explicitly: RapidOCR keeps per-call flags from one
     # call to the next, so an omitted flag silently inherits the last value.
@@ -211,28 +296,44 @@ def _run(source, *, use_cls: bool = True, min_region_conf: float = OCR_REGION_MI
     kwargs = dict(use_det=True, use_cls=use_cls, use_rec=True, text_score=0.0)
     if box_thresh is not None:
         kwargs["box_thresh"] = box_thresh
-    result = engine(_to_engine_input(source), **kwargs)
+    result, cls_labels = _call_engine(engine, _to_engine_input(source), kwargs)
     boxes = getattr(result, "boxes", None)
     txts = list(getattr(result, "txts", None) or [])
     scores = list(getattr(result, "scores", None) or [])
     boxes = list(boxes) if boxes is not None else [None] * len(txts)
 
-    regions: list[OcrRegion] = []
-    dropped = 0
-    for box, txt, score in zip(boxes, txts, scores):
+    flags = [_is_flip(lbl) for lbl in cls_labels] if cls_labels else [False] * len(txts)
+    flipped_fraction = _flipped_fraction(cls_labels) if use_cls else 0.0
+
+    candidates: list[OcrRegion] = []
+    for box, txt, score, flipped in zip(boxes, txts, scores, flags):
         if not txt or not txt.strip():
             continue
-        if score < min_region_conf:
-            dropped += 1
-            continue
         quad = [[float(x), float(y)] for x, y in box] if box is not None else [[0.0, 0.0]] * 4
-        regions.append(OcrRegion(text=txt.strip(), conf=float(score), quad=quad))
+        candidates.append(OcrRegion(text=txt.strip(), conf=float(score), quad=quad, flipped=flipped))
+
+    if second_opinion and use_cls and 0 < flipped_fraction < 0.5:
+        # A few lines flipped on an otherwise upright page are usually the
+        # classifier's mistake, which turns a clean line into garbage. Re-read
+        # just those lines with the classifier off and keep the better read.
+        for i, r in enumerate(candidates):
+            if r.flipped:
+                candidates[i] = _second_opinion(engine, source, r, kwargs)
+
+    regions: list[OcrRegion] = []
+    dropped = 0
+    for r in candidates:
+        if r.conf < min_region_conf:
+            dropped += 1
+        else:
+            regions.append(r)
 
     text = "\n".join(r.text for r in regions)
     mean_conf = (sum(r.conf for r in regions) / len(regions)) if regions else 0.0
     elapsed = getattr(result, "elapse", 0.0) or 0.0
     return OcrPageResult(text=text, mean_conf=mean_conf, n_regions=len(regions),
-                         regions=regions, dropped_regions=dropped, elapsed=float(elapsed))
+                         regions=regions, dropped_regions=dropped, elapsed=float(elapsed),
+                         flipped_fraction=flipped_fraction)
 
 
 def ocr_image(img, *, use_cls: bool = True, min_region_conf: float = OCR_REGION_MIN_CONF,

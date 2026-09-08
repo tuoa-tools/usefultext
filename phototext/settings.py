@@ -28,6 +28,9 @@ class Settings:
     trial_accept_conf: float = 0.85     # a sideways trial this confident wins outright
                                         # (the wrong direction reads at ~0.6 with the
                                         # line classifier off)
+    flip_fraction: float = 0.6          # share of lines the angle classifier flipped
+                                        # above which the whole page is upside down
+                                        # (real pages: ≤0.05 upright, ≥0.7 flipped)
 
     # --- engine -----------------------------------------------------------------
     det_box_thresh: float = 0.4         # RapidOCR detector box threshold (engine default
