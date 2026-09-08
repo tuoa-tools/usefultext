@@ -1,0 +1,7 @@
+# PhotoText — Milestone 1 (CLI). Pin the major versions that were verified together.
+rapidocr>=3.9,<4
+onnxruntime>=1.20,<2
+pillow>=10.2
+pillow-heif>=1.0
+pymupdf>=1.24
+numpy>=1.26,<3

@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Runtime outputs and personal inputs are never committed.
+output/
+Documents/
+fixtures/synthetic/
+
+# Reference material from a previous project — not part of this codebase.
+redaction_detection_poc/
