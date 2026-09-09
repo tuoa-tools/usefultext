@@ -96,19 +96,20 @@ def write_outputs(out_dir: Path, state: JobState, sources: list[PageSource], set
     pages_dir.mkdir(parents=True, exist_ok=True)
 
     for rec in records:
-        _atomic_write(pages_dir / f"{page_stem(rec.page, total)}.txt", page_text(rec))
+        _atomic_write(pages_dir / f"{page_stem(rec.page, total)}.txt", page_text(rec, settings))
     _atomic_write(out_dir / "document.md", document_markdown(state, records, total, settings))
     _atomic_write(out_dir / "document.jsonl", document_jsonl(records))
     _atomic_write(out_dir / "report.csv", report_csv(records))
 
 
-def page_text(rec) -> str:
+def page_text(rec, settings: Settings | None = None) -> str:
     """Never present a low-quality page's text without its flag."""
+    strip = settings.strip_furniture if settings else True
     notes = quality_note(rec)
     header = "".join(f"[{n}]\n" for n in notes)
     if notes:
         header += "\n"
-    body = rec.text if rec.status == "done" else ""
+    body = rec.body_text(strip) if rec.status == "done" else ""
     return header + body + ("\n" if body else "")
 
 
@@ -126,12 +127,14 @@ def document_markdown(state: JobState, records, total: int, settings: Settings) 
             meta.append(f"{rec.n_regions} regions")
             if rec.rotation:
                 meta.append(f"rotated {rec.rotation}°")
+            if rec.printed_page is not None:
+                meta.append(f"printed page {rec.printed_page}")
         parts.append(f"<!-- {' · '.join(meta)} -->")
         for n in quality_note(rec):
             parts.append(f"> ⚠ {n}")
         parts.append("")
         if rec.status == "done" and rec.lines:
-            parts.append(rec.markdown_body(settings.heading_level))
+            parts.append(rec.markdown_body(settings.heading_level, settings.strip_furniture))
             parts.append("")
     return "\n".join(parts).rstrip() + "\n"
 
@@ -141,21 +144,27 @@ def document_jsonl(records) -> str:
     for rec in records:
         if rec.status != "done":
             continue
-        line_of = {}
+        line_of, role_of = {}, {}
         for li, ln in enumerate(rec.lines):
+            role = "body"
+            if ln.get("furniture"):
+                role = next((f["position"] for f in rec.furniture if f["line"] == li), "footer")
+                role = "header" if role == "top" else "footer"
             for ri in ln["regions"]:
                 line_of[ri] = li
+                role_of[ri] = role
         for order, r in enumerate(rec.regions):
-            row = {"page": rec.page, "source": rec.label, "line": line_of.get(order, -1),
-                   "order": order, "text": r["text"], "conf": r["conf"], "bbox": r["bbox"],
+            row = {"page": rec.page, "printed_page": rec.printed_page, "source": rec.label,
+                   "line": line_of.get(order, -1), "order": order, "role": role_of.get(order, "body"),
+                   "text": r["text"], "conf": r["conf"], "bbox": r["bbox"],
                    "clipped": bool(r.get("clipped", False)), "low_conf_page": rec.low_conf}
             lines.append(json.dumps(row, ensure_ascii=False))
     return "\n".join(lines) + ("\n" if lines else "")
 
 
-REPORT_COLUMNS = ["page", "filename", "regions", "mean_conf", "low_conf",
+REPORT_COLUMNS = ["page", "filename", "printed_page", "regions", "mean_conf", "low_conf",
                   "sharpness", "blurry", "rotation", "dropped_regions", "clipped_regions",
-                  "elapsed_s", "status", "error"]
+                  "furniture_lines", "elapsed_s", "status", "error"]
 
 
 def report_csv(records) -> str:
@@ -165,7 +174,9 @@ def report_csv(records) -> str:
     w.writeheader()
     for rec in records:
         w.writerow({
-            "page": rec.page, "filename": rec.label, "regions": rec.n_regions,
+            "page": rec.page, "filename": rec.label,
+            "printed_page": "" if rec.printed_page is None else rec.printed_page,
+            "furniture_lines": len(rec.furniture), "regions": rec.n_regions,
             "mean_conf": f"{rec.mean_conf:.3f}", "low_conf": str(rec.low_conf).lower(),
             "sharpness": f"{rec.sharpness:.1f}", "blurry": str(rec.blurry).lower(),
             "rotation": rec.rotation, "dropped_regions": rec.dropped_regions,

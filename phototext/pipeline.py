@@ -23,6 +23,7 @@ from . import ocr
 from .inputs import PageSource
 from .layout import layout_page, render_text, render_markdown, tall_area_fraction, clipped_at_edge, Line
 from .ocr import OcrRegion, OcrPageResult
+from .furniture import detect_furniture, order_by_printed_page
 from .preprocess import load_image, downscale, sharpness_score, rotate, rotated_size
 from .settings import Settings
 
@@ -58,8 +59,11 @@ class PageRecord:
     mean_conf: float = 0.0
     low_conf: bool = True
 
-    text: str = ""
-    lines: list = field(default_factory=list)      # [{"text", "heading", "regions": [idx...]}]
+    printed_page: int | None = None                # from a running header/footer, if any
+    furniture: list = field(default_factory=list)  # [{"line", "text", "position"}]
+
+    text: str = ""                                 # everything read, in reading order
+    lines: list = field(default_factory=list)      # [{"text", "heading", "furniture", "regions": [idx...]}]
     regions: list = field(default_factory=list)    # [OcrRegion.to_dict() + "clipped"] full-res coords
 
     def to_dict(self) -> dict:
@@ -73,17 +77,22 @@ class PageRecord:
     def region_objects(self) -> list[OcrRegion]:
         return [OcrRegion.from_dict(r) for r in self.regions]
 
-    def line_objects(self) -> list[Line]:
+    def line_objects(self, skip_furniture: bool = False) -> list[Line]:
         regs = self.region_objects()
         out = []
         for ln in self.lines:
+            if skip_furniture and ln.get("furniture"):
+                continue
             line = Line([regs[i] for i in ln["regions"]], heading=ln.get("heading", False),
                         para_break_before=ln.get("para_break_before", False))
             out.append(line)
         return out
 
-    def markdown_body(self, heading_level: int = 2) -> str:
-        return render_markdown(self.line_objects(), heading_level)
+    def body_text(self, skip_furniture: bool = True) -> str:
+        return render_text(self.line_objects(skip_furniture))
+
+    def markdown_body(self, heading_level: int = 2, skip_furniture: bool = True) -> str:
+        return render_markdown(self.line_objects(skip_furniture), heading_level)
 
 
 def fingerprint(path: Path) -> str:
@@ -261,6 +270,7 @@ class JobSummary:
     stopped_early: bool = False
     elapsed: float = 0.0
     records: list = field(default_factory=list)   # PageRecord, in page order
+    order_notes: list = field(default_factory=list)  # from sort=printed
 
     @property
     def low_conf_pages(self) -> list[PageRecord]:
@@ -301,6 +311,13 @@ def run_job(sources: list[PageSource], out_dir: str | Path, settings: Settings |
 
     summary = JobSummary(out_dir=str(out), total=len(sources))
     t0 = time.perf_counter()
+
+    def finalize():
+        detect_furniture([state.pages[s.key] for s in sources if s.key in state.pages],
+                         band=settings.furniture_band, min_pages=settings.furniture_min_pages)
+        state.save(out)
+        write_outputs(out, state, sources, settings)
+
     for i, src in enumerate(sources, start=1):
         if should_stop and should_stop():
             summary.stopped_early = True
@@ -320,18 +337,22 @@ def run_job(sources: list[PageSource], out_dir: str | Path, settings: Settings |
                                  error=f"{type(exc).__name__}: {exc}",
                                  fingerprint=fingerprint(src.path) if src.path.exists() else "",
                                  processed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
-                rec.error_detail = traceback.format_exc()  # type: ignore[attr-defined]
                 summary.failed += 1
             else:
                 summary.processed += 1
         rec.page = i
         state.pages[src.key] = rec
-        state.save(out)
-        write_outputs(out, state, sources, settings)
+        finalize()
         if on_page:
             on_page(rec, i, len(sources), resumed)
 
-    write_outputs(out, state, sources, settings)
+    if settings.sort == "printed" and not summary.stopped_early:
+        printed = {s.key: state.pages[s.key].printed_page for s in sources if s.key in state.pages}
+        sources, summary.order_notes = order_by_printed_page(sources, printed)
+        for i, src in enumerate(sources, start=1):
+            if src.key in state.pages:
+                state.pages[src.key].page = i
+    finalize()
     summary.records = [state.pages[s.key] for s in sources if s.key in state.pages]
     summary.elapsed = round(time.perf_counter() - t0, 2)
     return summary

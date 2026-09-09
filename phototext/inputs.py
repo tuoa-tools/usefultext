@@ -17,7 +17,7 @@ from PIL import Image
 
 from .preprocess import SUPPORTED_EXTS, SUPPORTED_PDF_EXTS
 
-SORT_MODES = ("auto", "name", "time")
+SORT_MODES = ("auto", "name", "time", "printed")
 
 
 @dataclass(frozen=True)
@@ -88,6 +88,8 @@ def order_files(files: Iterable[Path], mode: str = "auto") -> tuple[list[Path], 
     files = list(files)
     if mode not in SORT_MODES:
         raise ValueError(f"sort must be one of {SORT_MODES}, got {mode!r}")
+    if mode == "printed":       # printed numbers are only known after OCR; start from auto
+        mode = "auto"
     if mode == "auto":
         unhelpful = sum(name_looks_unhelpful(f.stem) for f in files)
         mode = "time" if len(files) > 1 and unhelpful * 2 >= len(files) else "name"

@@ -27,7 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", required=True, type=Path, help="output folder (created if missing)")
     p.add_argument("--sort", choices=SORT_MODES, default=d.sort,
                    help="page order: name (natural sort), time (EXIF DateTimeOriginal), "
-                        "auto = name unless the names look random (default)")
+                        "auto = name unless the names look random (default), "
+                        "printed = by page numbers found in running headers/footers")
     p.add_argument("--recursive", action="store_true", help="also search sub-folders")
     p.add_argument("--force", action="store_true", help="re-read pages already completed in --out")
     p.add_argument("--dpi", type=int, default=d.pdf_dpi, help=f"PDF render resolution (default {d.pdf_dpi})")
@@ -45,6 +46,8 @@ def build_parser() -> argparse.ArgumentParser:
                         f"(default {d.heading_height_ratio})")
     p.add_argument("--keep-clipped", action="store_true",
                    help="keep narrow text cut off at the photo's left/right edge (facing page)")
+    p.add_argument("--keep-furniture", action="store_true",
+                   help="keep running headers/footers in the text (they stay in the JSONL either way)")
     p.add_argument("--box-thresh", type=float, default=d.det_box_thresh,
                    help=f"RapidOCR detector box threshold (default {d.det_box_thresh}; engine default 0.5)")
     p.add_argument("--title", help="document title for document.md (default: input folder name)")
@@ -58,7 +61,7 @@ def settings_from_args(args) -> Settings:
                     blur_threshold=args.blur_threshold, auto_rotate=not args.no_rotate,
                     min_page_conf=args.min_conf, min_region_conf=args.region_conf,
                     heading_height_ratio=args.heading_ratio, drop_clipped=not args.keep_clipped,
-                    det_box_thresh=args.box_thresh)
+                    det_box_thresh=args.box_thresh, strip_furniture=not args.keep_furniture)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -126,6 +129,17 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"\nDone: {summary.processed} read, {summary.resumed} skipped (already read), "
           f"{summary.failed} failed, {summary.elapsed:.1f}s")
+    if settings.sort == "printed":
+        print("Order by printed page number:")
+        for r in summary.records:
+            shown = r.printed_page if r.printed_page is not None else "?"
+            print(f"  page {r.page:3d} = printed {shown!s:>4}  {r.label}")
+        for n in summary.order_notes:
+            print(f"  note: {n}")
+    furniture = sum(len(r.furniture) for r in summary.records if r.status == "done")
+    if furniture:
+        verb = "removed from the text" if settings.strip_furniture else "kept in the text"
+        print(f"{furniture} running header/footer line(s) detected across pages, {verb}.")
     low = summary.low_conf_pages
     if low:
         print(f"{len(low)} page(s) read poorly — consider re-photographing:")

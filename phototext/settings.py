@@ -15,7 +15,7 @@ class Settings:
     # --- inputs -------------------------------------------------------------
     pdf_dpi: int = OCR_DPI              # render resolution for PDF pages
     pdf_max_pixels: int = 9_000_000     # clamp oversized media boxes (~9 MP)
-    sort: str = "auto"                  # auto | name | time
+    sort: str = "auto"                  # auto | name | time | printed (by detected page numbers)
 
     # --- preprocessing --------------------------------------------------------
     max_long_edge: int = 2500           # downscale phone photos before inference
@@ -45,6 +45,11 @@ class Settings:
     drop_clipped: bool = True
     edge_margin_frac: float = 0.02      # "touches the edge" = within 2% of image width
     clipped_max_width_frac: float = 0.4 # ...and narrower than 40% of the median region
+
+    # --- running headers/footers (detected across pages, see furniture.py)
+    strip_furniture: bool = True        # keep them out of the text/markdown (kept in JSONL)
+    furniture_band: float = 0.12        # only lines within this fraction of the page top/bottom
+    furniture_min_pages: int = 2        # a pattern must recur on this many pages
 
     # --- layout -----------------------------------------------------------------
     line_band_factor: float = 0.6       # vertical-centre tolerance, × median line height
