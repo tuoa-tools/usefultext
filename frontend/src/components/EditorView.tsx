@@ -8,7 +8,7 @@ import {
   SkipBack,
   SkipForward,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
   addToDictionary,
   correctLine,
@@ -281,6 +281,7 @@ function PageEditor({
           the magnified strip and the full page stay put while the text moves. */}
       <div
         ref={frameRef}
+        data-testid="editor-frame"
         className="grid gap-4 lg:grid-cols-2"
         style={frameHeight ? { height: frameHeight } : undefined}
       >
@@ -309,12 +310,13 @@ function PageEditor({
 
 /** The height left between an element's top and the bottom of the window, on wide
  *  screens (null on narrow ones, where the page scrolls as usual). Re-measured when
- *  the window or the layout above changes. */
-function useViewportHeight(): [RefObject<HTMLDivElement | null>, number | null] {
-  const ref = useRef<HTMLDivElement>(null);
+ *  the window or the layout above changes. Takes a callback ref: the frame is only
+ *  rendered once the page has loaded, so the measuring starts when it appears, not
+ *  when the component mounts. */
+function useViewportHeight(): [(el: HTMLDivElement | null) => void, number | null] {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
   const [value, setValue] = useState<number | null>(null);
   useEffect(() => {
-    const el = ref.current;
     if (!el) return;
     const wide = window.matchMedia('(min-width: 1024px)');
     const measure = () => {
@@ -336,8 +338,8 @@ function useViewportHeight(): [RefObject<HTMLDivElement | null>, number | null] 
       window.removeEventListener('resize', measure);
       wide.removeEventListener('change', measure);
     };
-  }, []);
-  return [ref, value];
+  }, [el]);
+  return [setEl, value];
 }
 
 const ZOOM_KEY = 'usefultext.lineZoom';
