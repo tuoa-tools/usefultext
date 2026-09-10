@@ -1,14 +1,22 @@
-# PhotoText — Milestone 1 (CLI)
+# UsefulText
 
 Turns a folder of photographed document pages (and PDFs) into text and
 markdown, entirely on your machine. OCR is RapidOCR on ONNX Runtime (CPU);
 the models ship inside the `rapidocr` wheel, so nothing is downloaded or
-uploaded at run time. See `PROJECT_DOCS/BRIEF.md` for the full specification.
+uploaded at run time. Formerly PhotoText; one of the "Useful" family of
+tools alongside [media_downloader](https://github.com/adam-tuoa/media_downloader).
+
+**Status:** Milestone 1, the command line, is complete and calibrated on real
+photos. Milestone 2, a local app with a browser UI (library, page ordering,
+side-by-side editor, exports), is in progress — see
+`PROJECT_DOCS/PLAN_M2.md`. `PROJECT_DOCS/BRIEF.md` is the specification.
 
 ```
-python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python doc_reader.py Documents/ --out output/
+python3.13 -m venv .venv && .venv/bin/pip install -e .
+.venv/bin/usefultext Documents/ --out output/
 ```
+
+`python -m usefultext` does the same. Windows: `.venv\Scripts\usefultext`.
 
 ## What you get in `--out`
 
@@ -83,15 +91,19 @@ curl are rejoined. Headings are short lines, narrower than a body line, that
 are either notably taller than the body (`--heading-ratio`, 1.2) or centred
 on the body column. Single-column only; running headers/footers are kept.
 
-## Using the pipeline from code (Milestone 2)
+## Using the pipeline from code
 
 ```python
-from phototext import Settings, discover_sources, run_job, sharpness_precheck
+from usefultext import Settings, discover_sources, run_job, sharpness_precheck
 
 sources, sort_mode = discover_sources(["Documents"], sort="auto")
-summary = run_job(sources, "output", Settings(),
-                  on_page=lambda rec, i, n, resumed: print(rec.page, rec.mean_conf),
-                  should_stop=lambda: False)      # pause = return True
+summary = run_job(
+    sources,
+    "output",
+    Settings(),
+    on_page=lambda rec, i, n, resumed: print(rec.page, rec.mean_conf),
+    should_stop=lambda: False,
+)  # pause = return True
 ```
 
 `run_job` is synchronous and CPU-bound; call it from a worker thread.
@@ -99,10 +111,21 @@ summary = run_job(sources, "output", Settings(),
 ## Development
 
 ```
-.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pip install -e ".[dev]"
+.venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/python -m pytest -q
 .venv/bin/python tools/make_fixtures.py     # HEIC / PDF / EXIF / upside-down fixtures from Documents/
 .venv/bin/python tools/eval_models.py       # CER/WER of OCR configurations vs fixtures/reference/
+```
+
+CI (`.github/workflows/ci.yml`) runs the same checks on Ubuntu and Windows.
+
+```
+usefultext/          the pipeline: ocr, preprocess, inputs, pipeline, layout, furniture, outputs, settings; cli.py
+app/                 the local app (Milestone 2): paths, desktop, launcher now; API, library, worker next
+tests/               pytest
+tools/               fixture derivation and the evaluation harness
+PROJECT_DOCS/        BRIEF.md (spec), HANDOVER.md (Milestone 1 record), PLAN_M2.md (Milestone 2 plan)
 ```
 
 `fixtures/reference/` holds hand-checked transcripts of the six sample

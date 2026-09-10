@@ -116,7 +116,7 @@ def page_text(rec, settings: Settings | None = None) -> str:
 def document_markdown(state: JobState, records, total: int, settings: Settings) -> str:
     from . import __version__
     parts = [f"# {state.title}", "",
-             f"_Transcribed locally by PhotoText {__version__} (RapidOCR). "
+             f"_Transcribed locally by UsefulText {__version__} (RapidOCR). "
              "Read quality is the OCR engine's own certainty, not a measure of accuracy. "
              f"{len(records)} of {total} pages read._", ""]
     for rec in records:

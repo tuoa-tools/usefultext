@@ -1,7 +1,7 @@
 """ocr.py — OCR backend (RapidOCR / ONNX Runtime, CPU).
 
 Copied from redaction_detection_poc/ocr.py (proven on real scanned documents)
-and extended for PhotoText. The original API is kept intact:
+and extended for UsefulText. The original API is kept intact:
 
   available() / import_error()      lazy singleton engine, never crashes
   OcrPageResult(text, mean_conf, n_regions) with .low_confidence
@@ -21,7 +21,7 @@ Design (unchanged):
   - Every result carries a mean confidence so callers can gate on quality.
     Confidence is the engine's certainty ("read quality"), never "accuracy".
   - Fully offline: the default models ship inside the rapidocr wheel; nothing
-    is fetched at run time. PHOTOTEXT_MODEL_DIR overrides the model folder
+    is fetched at run time. USEFULTEXT_MODEL_DIR overrides the model folder
     (the hook the frozen/packaged build will use).
 
 Tuning:
@@ -31,6 +31,7 @@ Tuning:
                        as unreliably read (silent-failure gate)
   OCR_REGION_MIN_CONF  per-region confidence below which a region is dropped
 """
+
 from __future__ import annotations
 
 import math
@@ -52,10 +53,10 @@ _lock = threading.Lock()
 
 def _engine_params() -> dict[str, Any]:
     params: dict[str, Any] = {
-        "Global.use_cls": True,        # per-line 180° flips (brief: enable)
+        "Global.use_cls": True,  # per-line 180° flips (brief: enable)
         "Global.log_level": "warning",
     }
-    model_dir = os.environ.get("PHOTOTEXT_MODEL_DIR")
+    model_dir = os.environ.get("USEFULTEXT_MODEL_DIR")
     if model_dir:
         params["Global.model_root_dir"] = model_dir
     return params
@@ -73,9 +74,10 @@ def available() -> bool:
             return True
         try:
             from rapidocr import RapidOCR
+
             _engine = RapidOCR(params=_engine_params())
             return True
-        except Exception as exc:          # not installed, or model load failed
+        except Exception as exc:  # not installed, or model load failed
             _import_error = repr(exc)
             return False
 
@@ -101,10 +103,11 @@ def _dist(a, b) -> float:
 class OcrRegion:
     """One detected text line. `quad` is [tl, tr, br, bl] in pixel coordinates
     of the image handed to the engine (RapidOCR maps boxes back to the input)."""
+
     text: str
     conf: float
     quad: list[list[float]]
-    flipped: bool = False          # the angle classifier turned this line 180°
+    flipped: bool = False  # the angle classifier turned this line 180°
 
     @property
     def bbox(self) -> tuple[float, float, float, float]:
@@ -119,8 +122,8 @@ class OcrRegion:
         flips for tilted vertical ones, so width/height are chosen by which
         edge pair lies closer to the x-axis rather than by corner index."""
         q = self.quad
-        a_len = (_dist(q[0], q[1]) + _dist(q[3], q[2])) / 2      # edges p0→p1, p3→p2
-        b_len = (_dist(q[0], q[3]) + _dist(q[1], q[2])) / 2      # edges p0→p3, p1→p2
+        a_len = (_dist(q[0], q[1]) + _dist(q[3], q[2])) / 2  # edges p0→p1, p3→p2
+        b_len = (_dist(q[0], q[3]) + _dist(q[1], q[2])) / 2  # edges p0→p3, p1→p2
         a_dx = abs(q[1][0] - q[0][0]) + abs(q[2][0] - q[3][0])
         b_dx = abs(q[3][0] - q[0][0]) + abs(q[2][0] - q[1][0])
         # Compare |cos| of each edge pair with the x-axis.
@@ -129,11 +132,11 @@ class OcrRegion:
         return (a_len, b_len) if a_horiz >= b_horiz else (b_len, a_len)
 
     @property
-    def width(self) -> float:      # extent along the text direction (horizontal-ish)
+    def width(self) -> float:  # extent along the text direction (horizontal-ish)
         return self._edge_pair_lengths()[0]
 
     @property
-    def height(self) -> float:     # extent across the text (vertical-ish) — tilt-tolerant
+    def height(self) -> float:  # extent across the text (vertical-ish) — tilt-tolerant
         return self._edge_pair_lengths()[1]
 
     @property
@@ -148,9 +151,10 @@ class OcrRegion:
     def area(self) -> float:
         return self.width * self.height
 
-    def scaled(self, factor: float) -> "OcrRegion":
-        return OcrRegion(self.text, self.conf, [[x * factor, y * factor] for x, y in self.quad],
-                         self.flipped)
+    def scaled(self, factor: float) -> OcrRegion:
+        return OcrRegion(
+            self.text, self.conf, [[x * factor, y * factor] for x, y in self.quad], self.flipped
+        )
 
     def to_dict(self) -> dict:
         x0, y0, x1, y1 = self.bbox
@@ -162,8 +166,10 @@ class OcrRegion:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "OcrRegion":
-        return cls(text=d["text"], conf=float(d["conf"]), quad=[list(map(float, p)) for p in d["quad"]])
+    def from_dict(cls, d: dict) -> OcrRegion:
+        return cls(
+            text=d["text"], conf=float(d["conf"]), quad=[list(map(float, p)) for p in d["quad"]]
+        )
 
 
 @dataclass
@@ -172,15 +178,15 @@ class OcrPageResult:
     mean_conf: float
     n_regions: int
     regions: list[OcrRegion] = field(default_factory=list)
-    dropped_regions: int = 0        # below OCR_REGION_MIN_CONF (or caller's value)
+    dropped_regions: int = 0  # below OCR_REGION_MIN_CONF (or caller's value)
     elapsed: float = 0.0
-    flipped_fraction: float = 0.0   # share of lines the angle classifier turned 180°
-                                    # (≈0 on an upright page, ≈0.9 on an upside-down one)
+    flipped_fraction: float = 0.0  # share of lines the angle classifier turned 180°
+    # (≈0 on an upright page, ≈0.9 on an upside-down one)
 
     @property
     def low_confidence(self) -> bool:
         # No regions on a page we believed held content is itself suspect;
-        # the caller decides whether blank-is-plausible. (PhotoText's pipeline
+        # the caller decides whether blank-is-plausible. (UsefulText's pipeline
         # treats a blank read of a photographed page as low read quality.)
         return self.n_regions > 0 and self.mean_conf < OCR_MIN_CONF
 
@@ -198,7 +204,7 @@ def _to_engine_input(source):
     ndarrays are passed through and assumed BGR; paths/bytes go straight in."""
     try:
         from PIL import Image
-    except ImportError:            # pragma: no cover
+    except ImportError:  # pragma: no cover
         Image = None
     if Image is not None and isinstance(source, Image.Image):
         rgb = np.asarray(source.convert("RGB"))
@@ -206,7 +212,7 @@ def _to_engine_input(source):
     return source
 
 
-CLS_THRESH = 0.9   # RapidOCR only applies a 180° flip above this classifier score
+CLS_THRESH = 0.9  # RapidOCR only applies a 180° flip above this classifier score
 
 
 def _call_engine(engine, img, kwargs: dict):
@@ -232,7 +238,9 @@ def _call_engine(engine, img, kwargs: dict):
         txts_before = list(getattr(rec_res, "txts", None) or [])
         result = engine.build_final_output(ori_img, det_res, cls_res, rec_res, crops, op_record)
         if labels and len(labels) == len(txts_before):
-            labels = [lbl for lbl, txt in zip(labels, txts_before) if txt and txt.strip()]
+            labels = [
+                lbl for lbl, txt in zip(labels, txts_before, strict=True) if txt and txt.strip()
+            ]
             if len(labels) != len(getattr(result, "txts", None) or []):
                 labels = None
         else:
@@ -263,6 +271,7 @@ def _second_opinion(engine, source, region: OcrRegion, kwargs: dict) -> OcrRegio
     read the recogniser is more confident about."""
     try:
         from PIL import Image
+
         if isinstance(source, Image.Image):
             img = source
         elif isinstance(source, np.ndarray):
@@ -271,8 +280,14 @@ def _second_opinion(engine, source, region: OcrRegion, kwargs: dict) -> OcrRegio
             return region
         x0, y0, x1, y1 = region.bbox
         pad = max(4.0, 0.3 * region.height)
-        crop = img.crop((max(0, int(x0 - pad)), max(0, int(y0 - pad)),
-                         min(img.width, int(x1 + pad)), min(img.height, int(y1 + pad))))
+        crop = img.crop(
+            (
+                max(0, int(x0 - pad)),
+                max(0, int(y0 - pad)),
+                min(img.width, int(x1 + pad)),
+                min(img.height, int(y1 + pad)),
+            )
+        )
         alt = engine(_to_engine_input(crop), **dict(kwargs, use_cls=False))
         txts = list(getattr(alt, "txts", None) or [])
         scores = list(getattr(alt, "scores", None) or [])
@@ -280,15 +295,22 @@ def _second_opinion(engine, source, region: OcrRegion, kwargs: dict) -> OcrRegio
             return region
         best = max(range(len(txts)), key=lambda i: scores[i])
         if scores[best] > region.conf and txts[best].strip():
-            return OcrRegion(text=txts[best].strip(), conf=float(scores[best]), quad=region.quad,
-                             flipped=False)
+            return OcrRegion(
+                text=txts[best].strip(), conf=float(scores[best]), quad=region.quad, flipped=False
+            )
     except Exception:
         pass
     return region
 
 
-def _run(source, *, use_cls: bool = True, min_region_conf: float = OCR_REGION_MIN_CONF,
-         box_thresh: float | None = None, second_opinion: bool = True) -> OcrPageResult:
+def _run(
+    source,
+    *,
+    use_cls: bool = True,
+    min_region_conf: float = OCR_REGION_MIN_CONF,
+    box_thresh: float | None = None,
+    second_opinion: bool = True,
+) -> OcrPageResult:
     engine = _ensure_engine()
     # Every flag is passed explicitly: RapidOCR keeps per-call flags from one
     # call to the next, so an omitted flag silently inherits the last value.
@@ -306,11 +328,14 @@ def _run(source, *, use_cls: bool = True, min_region_conf: float = OCR_REGION_MI
     flipped_fraction = _flipped_fraction(cls_labels) if use_cls else 0.0
 
     candidates: list[OcrRegion] = []
-    for box, txt, score, flipped in zip(boxes, txts, scores, flags):
+    # Lengths were reconciled above; a mismatch must never raise mid-page.
+    for box, txt, score, flipped in zip(boxes, txts, scores, flags, strict=False):
         if not txt or not txt.strip():
             continue
         quad = [[float(x), float(y)] for x, y in box] if box is not None else [[0.0, 0.0]] * 4
-        candidates.append(OcrRegion(text=txt.strip(), conf=float(score), quad=quad, flipped=flipped))
+        candidates.append(
+            OcrRegion(text=txt.strip(), conf=float(score), quad=quad, flipped=flipped)
+        )
 
     if second_opinion and use_cls and 0 < flipped_fraction < 0.5:
         # A few lines flipped on an otherwise upright page are usually the
@@ -331,13 +356,24 @@ def _run(source, *, use_cls: bool = True, min_region_conf: float = OCR_REGION_MI
     text = "\n".join(r.text for r in regions)
     mean_conf = (sum(r.conf for r in regions) / len(regions)) if regions else 0.0
     elapsed = getattr(result, "elapse", 0.0) or 0.0
-    return OcrPageResult(text=text, mean_conf=mean_conf, n_regions=len(regions),
-                         regions=regions, dropped_regions=dropped, elapsed=float(elapsed),
-                         flipped_fraction=flipped_fraction)
+    return OcrPageResult(
+        text=text,
+        mean_conf=mean_conf,
+        n_regions=len(regions),
+        regions=regions,
+        dropped_regions=dropped,
+        elapsed=float(elapsed),
+        flipped_fraction=flipped_fraction,
+    )
 
 
-def ocr_image(img, *, use_cls: bool = True, min_region_conf: float = OCR_REGION_MIN_CONF,
-              box_thresh: float | None = None) -> OcrPageResult:
+def ocr_image(
+    img,
+    *,
+    use_cls: bool = True,
+    min_region_conf: float = OCR_REGION_MIN_CONF,
+    box_thresh: float | None = None,
+) -> OcrPageResult:
     """OCR an in-memory image (PIL.Image, or an ndarray in BGR order).
 
     box_thresh overrides the detector's box threshold (engine default 0.5);

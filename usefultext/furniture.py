@@ -15,6 +15,7 @@ marker) and drive `sort=printed`: pages are ordered by their printed number,
 un-numbered pages fill the gaps in capture order, and the CLI prints the
 resulting mapping so a person can sanity-check it.
 """
+
 from __future__ import annotations
 
 import re
@@ -41,7 +42,7 @@ def similar(a: str, b: str, threshold: float = 0.8) -> bool:
         return False
     if SequenceMatcher(None, a, b).ratio() >= threshold:
         return True
-    return SequenceMatcher(None, a[:n], b[:n]).ratio() >= 0.9   # one copy cut short
+    return SequenceMatcher(None, a[:n], b[:n]).ratio() >= 0.9  # one copy cut short
 
 
 def printed_number(text: str) -> int | None:
@@ -67,7 +68,7 @@ class Candidate:
     record: object
     line_index: int
     text: str
-    position: str          # "top" | "bottom"
+    position: str  # "top" | "bottom"
     sig: str
 
 
@@ -82,15 +83,18 @@ def _line_rel_y(record, line: dict) -> float | None:
     return (sum(ys) / len(ys)) / record.height if ys else None
 
 
-def candidates(record, band: float = 0.12, max_chars: int = 60, max_lines_each_end: int = 2
-               ) -> list[Candidate]:
+def candidates(
+    record, band: float = 0.12, max_chars: int = 60, max_lines_each_end: int = 2
+) -> list[Candidate]:
     lines = record.lines
     if not lines:
         return []
     out: list[Candidate] = []
     n = len(lines)
     ends = [(i, "top") for i in range(min(max_lines_each_end, n))]
-    ends += [(i, "bottom") for i in range(max(n - max_lines_each_end, 0), n) if (i, "top") not in ends]
+    ends += [
+        (i, "bottom") for i in range(max(n - max_lines_each_end, 0), n) if (i, "top") not in ends
+    ]
     for i, position in ends:
         line = lines[i]
         text = line.get("text", "").strip()
@@ -134,7 +138,9 @@ def detect_furniture(records, *, band: float = 0.12, min_pages: int = 2) -> None
             continue
         for c in cluster:
             c.record.lines[c.line_index]["furniture"] = True
-            c.record.furniture.append({"line": c.line_index, "text": c.text, "position": c.position})
+            c.record.furniture.append(
+                {"line": c.line_index, "text": c.text, "position": c.position}
+            )
             num = printed_number(c.text)
             if num is not None and c.record.printed_page is None:
                 c.record.printed_page = num
@@ -154,7 +160,9 @@ def order_by_printed_page(sources, printed: dict[str, int | None]) -> tuple[list
     seen = set()
     for n in numbers:
         if n in seen:
-            notes.append(f"printed page {n} appears more than once; capture order kept between them")
+            notes.append(
+                f"printed page {n} appears more than once; capture order kept between them"
+            )
         seen.add(n)
     gaps = [n for n in range(numbers[0], numbers[-1] + 1) if n not in seen]
 

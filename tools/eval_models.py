@@ -9,6 +9,7 @@ under each configuration and report character and word error rates against
 the reference. Non-default configurations download their model on first
 use (development only — the packaged app bundles whatever wins here).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,15 +23,27 @@ sys.path.insert(0, str(ROOT))
 
 from PIL import ImageFilter  # noqa: E402
 
-from phototext import Settings, discover_sources, ocr, pipeline  # noqa: E402
+from usefultext import Settings, discover_sources, ocr, pipeline  # noqa: E402
 
 CONFIGS: dict[str, dict] = {
     "default (v6 small)": {},
     "v6 medium rec": {"Rec.model_type": "medium"},
     "v6 medium det+rec": {"Det.model_type": "medium", "Rec.model_type": "medium"},
-    "v5 en mobile rec": {"Rec.ocr_version": "PP-OCRv5", "Rec.lang_type": "en", "Rec.model_type": "mobile"},
-    "v5 ch server rec": {"Rec.ocr_version": "PP-OCRv5", "Rec.lang_type": "ch", "Rec.model_type": "server"},
-    "v4 en mobile rec": {"Rec.ocr_version": "PP-OCRv4", "Rec.lang_type": "en", "Rec.model_type": "mobile"},
+    "v5 en mobile rec": {
+        "Rec.ocr_version": "PP-OCRv5",
+        "Rec.lang_type": "en",
+        "Rec.model_type": "mobile",
+    },
+    "v5 ch server rec": {
+        "Rec.ocr_version": "PP-OCRv5",
+        "Rec.lang_type": "ch",
+        "Rec.model_type": "server",
+    },
+    "v4 en mobile rec": {
+        "Rec.ocr_version": "PP-OCRv4",
+        "Rec.lang_type": "en",
+        "Rec.model_type": "mobile",
+    },
     "default + unsharp": {"_unsharp": True},
 }
 
@@ -71,6 +84,7 @@ _ENUM_KEYS = {"model_type": "ModelType", "ocr_version": "OCRVersion", "lang_type
 def _typed(key: str, value):
     """RapidOCR validates these settings as enums, not strings."""
     from rapidocr.utils import typings
+
     field = key.split(".")[-1]
     if field in _ENUM_KEYS:
         return getattr(typings, _ENUM_KEYS[field])(value)
@@ -79,6 +93,7 @@ def _typed(key: str, value):
 
 def swap_engine(params: dict) -> None:
     from rapidocr import RapidOCR
+
     full = dict(ocr._engine_params())
     full.update({k: _typed(k, v) for k, v in params.items() if not k.startswith("_")})
     ocr._engine = RapidOCR(params=full)
@@ -106,8 +121,12 @@ def main() -> int:
         params = CONFIGS[name]
         pipeline.load_source = original_load
         if params.get("_unsharp"):
+
             def sharpened(src, st, _orig=original_load):
-                return _orig(src, st).filter(ImageFilter.UnsharpMask(radius=2, percent=120, threshold=2))
+                return _orig(src, st).filter(
+                    ImageFilter.UnsharpMask(radius=2, percent=120, threshold=2)
+                )
+
             pipeline.load_source = sharpened
         t0 = time.perf_counter()
         try:
@@ -126,12 +145,37 @@ def main() -> int:
             per_page.append((s.path.stem[:8], cer, wer))
             confs.append(rec.mean_conf)
         all_hyp_chars = sum(len(normalise(refs[s.key])) for s in sources)
-        tot_cer = sum(c * len(normalise(refs[s.key])) for (_, c, _), s in zip(per_page, sources)) / all_hyp_chars
+        tot_cer = (
+            sum(
+                c * len(normalise(refs[s.key]))
+                for (_, c, _), s in zip(per_page, sources, strict=True)
+            )
+            / all_hyp_chars
+        )
         tot_words = sum(len(normalise(refs[s.key]).split()) for s in sources)
-        tot_wer = sum(w * len(normalise(refs[s.key]).split()) for (_, _, w), s in zip(per_page, sources)) / tot_words
-        rows.append((name, tot_cer, tot_wer, sum(confs) / len(confs), t_pages / len(sources), load_t, per_page))
-        print(f"{name:22} CER {tot_cer:6.2%}  WER {tot_wer:6.2%}  quality {sum(confs)/len(confs):.3f}  "
-              f"{t_pages/len(sources):4.1f}s/page  (load {load_t:.1f}s)")
+        tot_wer = (
+            sum(
+                w * len(normalise(refs[s.key]).split())
+                for (_, _, w), s in zip(per_page, sources, strict=True)
+            )
+            / tot_words
+        )
+        rows.append(
+            (
+                name,
+                tot_cer,
+                tot_wer,
+                sum(confs) / len(confs),
+                t_pages / len(sources),
+                load_t,
+                per_page,
+            )
+        )
+        print(
+            f"{name:22} CER {tot_cer:6.2%}  WER {tot_wer:6.2%}  "
+            f"quality {sum(confs) / len(confs):.3f}  "
+            f"{t_pages / len(sources):4.1f}s/page  (load {load_t:.1f}s)"
+        )
         print("    per page CER: " + "  ".join(f"{n}={c:.1%}" for n, c, _ in per_page))
     pipeline.load_source = original_load
 

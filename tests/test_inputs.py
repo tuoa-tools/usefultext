@@ -2,12 +2,18 @@ from pathlib import Path
 
 from PIL import Image
 
-from phototext.inputs import natural_key, name_looks_unhelpful, order_files, discover_files
+from usefultext.inputs import discover_files, name_looks_unhelpful, natural_key, order_files
 
 
 def test_natural_sort_order():
     names = ["page_10.jpg", "page_9.jpg", "page_1.jpg", "img2.jpg", "img10.jpg"]
-    assert sorted(names, key=natural_key) == ["img2.jpg", "img10.jpg", "page_1.jpg", "page_9.jpg", "page_10.jpg"]
+    assert sorted(names, key=natural_key) == [
+        "img2.jpg",
+        "img10.jpg",
+        "page_1.jpg",
+        "page_9.jpg",
+        "page_10.jpg",
+    ]
 
 
 def test_unhelpful_names():
@@ -23,8 +29,10 @@ def test_auto_mode_picks_time_for_uuid_names(tmp_path: Path):
         p = tmp_path / f"{name}.png"
         Image.new("RGB", (8, 8)).save(p)
         files.append(p)
-    import os, time
-    os.utime(files[0], (time.time() - 100, time.time() - 100))   # b… is older → first
+    import os
+    import time
+
+    os.utime(files[0], (time.time() - 100, time.time() - 100))  # b… is older → first
     ordered, mode = order_files(files, "auto")
     assert mode == "time"
     assert [f.name[0] for f in ordered] == ["b", "a"]

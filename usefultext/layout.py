@@ -16,6 +16,7 @@ everything here is geometry:
   alone cannot separate them; the width rule can.
 - Paragraph breaks: a vertical gap notably larger than the median line gap.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -108,8 +109,13 @@ def _body_lines(lines: list[Line]) -> list[Line]:
 _SENTENCE_END = ".,;:"
 
 
-def mark_headings(lines: list[Line], height_ratio: float = 1.2, max_chars: int = 60,
-                  max_width_ratio: float = 0.8, min_lines: int = 5) -> None:
+def mark_headings(
+    lines: list[Line],
+    height_ratio: float = 1.2,
+    max_chars: int = 60,
+    max_width_ratio: float = 0.8,
+    min_lines: int = 5,
+) -> None:
     """Flag headings. A candidate must be short (chars), narrower than a body
     line, contain letters and not end like a sentence. It is then a heading if
     EITHER it is notably taller than the body median (left-aligned headings)
@@ -132,9 +138,11 @@ def mark_headings(lines: list[Line], height_ratio: float = 1.2, max_chars: int =
         if text[-1] in _SENTENCE_END or line.width > max_width_ratio * w_med:
             continue
         taller = line.height >= height_ratio * h_med
-        centred = (abs((line.x0 + line.x1) / 2 - body_cx) <= 0.05 * w_med
-                   and line.x0 - body_x0 >= 0.08 * w_med
-                   and line.height >= h_med)
+        centred = (
+            abs((line.x0 + line.x1) / 2 - body_cx) <= 0.05 * w_med
+            and line.x0 - body_x0 >= 0.08 * w_med
+            and line.height >= h_med
+        )
         if taller or centred:
             line.heading = True
 
@@ -153,10 +161,15 @@ def mark_paragraphs(lines: list[Line], gap_factor: float = 1.6) -> None:
             lines[i].para_break_before = True
 
 
-def layout_page(regions: list[OcrRegion], *, band_factor: float = 0.6,
-                heading_height_ratio: float = 1.2, heading_max_chars: int = 60,
-                heading_max_width_ratio: float = 0.8,
-                paragraph_gap_factor: float = 1.6) -> list[Line]:
+def layout_page(
+    regions: list[OcrRegion],
+    *,
+    band_factor: float = 0.6,
+    heading_height_ratio: float = 1.2,
+    heading_max_chars: int = 60,
+    heading_max_width_ratio: float = 0.8,
+    paragraph_gap_factor: float = 1.6,
+) -> list[Line]:
     lines = group_lines(regions, band_factor)
     mark_headings(lines, heading_height_ratio, heading_max_chars, heading_max_width_ratio)
     mark_paragraphs(lines, paragraph_gap_factor)
@@ -195,8 +208,13 @@ def tall_area_fraction(regions: list[OcrRegion], ratio: float = 1.5) -> float:
     return tall / total
 
 
-def clipped_at_edge(regions: list[OcrRegion], image_width: float, *,
-                    edge_margin_frac: float = 0.02, max_width_frac: float = 0.4) -> set[int]:
+def clipped_at_edge(
+    regions: list[OcrRegion],
+    image_width: float,
+    *,
+    edge_margin_frac: float = 0.02,
+    max_width_frac: float = 0.4,
+) -> set[int]:
     """Indices of regions that touch the photo's left/right edge and are much
     narrower than the page's typical region: the facing page peeking into the
     frame ("Where th", "in the co"). Such text is cut off by the photo itself,

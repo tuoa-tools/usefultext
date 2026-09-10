@@ -7,24 +7,31 @@ run_job()       ordered pages → output folder, writing results per page and
 Nothing here is tied to the CLI: the Milestone 2 web layer calls run_job()
 from a worker thread with its own on_page / should_stop callbacks.
 """
+
 from __future__ import annotations
 
 import math
 import time
-import traceback
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
 
 from PIL import Image
 
 from . import ocr
-from .inputs import PageSource
-from .layout import layout_page, render_text, render_markdown, tall_area_fraction, clipped_at_edge, Line
-from .ocr import OcrRegion, OcrPageResult
 from .furniture import detect_furniture, order_by_printed_page
-from .preprocess import load_image, downscale, sharpness_score, rotate, rotated_size
+from .inputs import PageSource
+from .layout import (
+    Line,
+    clipped_at_edge,
+    layout_page,
+    render_markdown,
+    render_text,
+    tall_area_fraction,
+)
+from .ocr import OcrPageResult, OcrRegion
+from .preprocess import downscale, load_image, rotate, rotated_size, sharpness_score
 from .settings import Settings
 
 
@@ -34,43 +41,45 @@ from .settings import Settings
 @dataclass
 class PageRecord:
     key: str
-    source: str                 # file path
-    label: str                  # file name (+ #pN for PDFs)
+    source: str  # file path
+    label: str  # file name (+ #pN for PDFs)
     page_index: int = 0
-    page: int = 0               # 1-based position in the job; reassigned on resume
-    status: str = "done"        # done | error
+    page: int = 0  # 1-based position in the job; reassigned on resume
+    status: str = "done"  # done | error
     error: str | None = None
     fingerprint: str = ""
     processed_at: str = ""
     elapsed: float = 0.0
 
-    width: int = 0              # oriented page size at full resolution
+    width: int = 0  # oriented page size at full resolution
     height: int = 0
-    rotation: int = 0           # degrees CCW applied on top of EXIF orientation
-    scale: float = 1.0          # inference size / full size
-    trials: dict = field(default_factory=dict)   # rotation → score, when tried
+    rotation: int = 0  # degrees CCW applied on top of EXIF orientation
+    scale: float = 1.0  # inference size / full size
+    trials: dict = field(default_factory=dict)  # rotation → score, when tried
     weak_reason: str = ""
 
     sharpness: float = 0.0
     blurry: bool = False
     n_regions: int = 0
-    dropped_regions: int = 0    # below the region confidence filter
-    clipped_regions: int = 0    # cut off at the photo edge (kept in JSONL, out of the text)
+    dropped_regions: int = 0  # below the region confidence filter
+    clipped_regions: int = 0  # cut off at the photo edge (kept in JSONL, out of the text)
     mean_conf: float = 0.0
     low_conf: bool = True
 
-    printed_page: int | None = None                # from a running header/footer, if any
+    printed_page: int | None = None  # from a running header/footer, if any
     furniture: list = field(default_factory=list)  # [{"line", "text", "position"}]
 
-    text: str = ""                                 # everything read, in reading order
-    lines: list = field(default_factory=list)      # [{"text", "heading", "furniture", "regions": [idx...]}]
-    regions: list = field(default_factory=list)    # [OcrRegion.to_dict() + "clipped"] full-res coords
+    text: str = ""  # everything read, in reading order
+    lines: list = field(
+        default_factory=list
+    )  # [{"text", "heading", "furniture", "regions": [idx...]}]
+    regions: list = field(default_factory=list)  # [OcrRegion.to_dict() + "clipped"] full-res coords
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "PageRecord":
+    def from_dict(cls, d: dict) -> PageRecord:
         known = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
         return cls(**known)
 
@@ -83,8 +92,11 @@ class PageRecord:
         for ln in self.lines:
             if skip_furniture and ln.get("furniture"):
                 continue
-            line = Line([regs[i] for i in ln["regions"]], heading=ln.get("heading", False),
-                        para_break_before=ln.get("para_break_before", False))
+            line = Line(
+                [regs[i] for i in ln["regions"]],
+                heading=ln.get("heading", False),
+                para_break_before=ln.get("para_break_before", False),
+            )
             out.append(line)
         return out
 
@@ -107,6 +119,7 @@ def render_pdf_page(path: Path, index: int, dpi: int, max_pixels: int) -> Image.
     """Render one PDF page at `dpi`, lowering it if the page would exceed
     max_pixels (oversized media boxes exist in the wild)."""
     import pymupdf
+
     with pymupdf.open(path) as doc:
         page = doc[index]
         w_in, h_in = page.rect.width / 72.0, page.rect.height / 72.0
@@ -119,7 +132,9 @@ def render_pdf_page(path: Path, index: int, dpi: int, max_pixels: int) -> Image.
 
 def load_source(source: PageSource, settings: Settings) -> Image.Image:
     if source.is_pdf:
-        return render_pdf_page(source.path, source.page_index, settings.pdf_dpi, settings.pdf_max_pixels)
+        return render_pdf_page(
+            source.path, source.page_index, settings.pdf_dpi, settings.pdf_max_pixels
+        )
     return load_image(source.path)
 
 
@@ -159,8 +174,9 @@ def looks_weak(result: OcrPageResult, settings: Settings) -> str:
     return ""
 
 
-def choose_orientation(img: Image.Image, first: OcrPageResult, settings: Settings
-                       ) -> tuple[int, dict[str, float]]:
+def choose_orientation(
+    img: Image.Image, first: OcrPageResult, settings: Settings
+) -> tuple[int, dict[str, float]]:
     """Trial 90° (then 270° if needed) on a reduced copy with the line
     classifier OFF, so an upside-down candidate scores honestly low. With it
     on, the classifier silently fixes flipped lines and both directions look
@@ -168,16 +184,25 @@ def choose_orientation(img: Image.Image, first: OcrPageResult, settings: Setting
     Returns (rotation to apply, trial scores)."""
     trials = {"0": round(first.score, 2)}
     trial_img, _ = downscale(img, settings.trial_long_edge)
-    sideways = first.n_regions > 0 and tall_area_fraction(first.regions) >= settings.tall_region_fraction
+    sideways = (
+        first.n_regions > 0 and tall_area_fraction(first.regions) >= settings.tall_region_fraction
+    )
     results: dict[int, OcrPageResult] = {}
     for rot in (90, 270):
-        r = ocr.ocr_image(rotate(trial_img, rot), use_cls=False,
-                          min_region_conf=settings.min_region_conf, box_thresh=settings.det_box_thresh)
+        r = ocr.ocr_image(
+            rotate(trial_img, rot),
+            use_cls=False,
+            min_region_conf=settings.min_region_conf,
+            box_thresh=settings.det_box_thresh,
+        )
         results[rot] = r
         trials[str(rot)] = round(r.score, 2)
-        if (sideways and r.mean_conf >= settings.trial_accept_conf
-                and r.n_regions >= settings.weak_min_regions):
-            break                       # clear winner; skip the other direction
+        if (
+            sideways
+            and r.mean_conf >= settings.trial_accept_conf
+            and r.n_regions >= settings.weak_min_regions
+        ):
+            break  # clear winner; skip the other direction
     best_rot = max(results, key=lambda k: results[k].score)
     best_score = results[best_rot].score
     if best_score <= 0:
@@ -190,12 +215,18 @@ def choose_orientation(img: Image.Image, first: OcrPageResult, settings: Setting
 # --------------------------------------------------------------------------- #
 # One page
 # --------------------------------------------------------------------------- #
-def process_page(source: PageSource, settings: Settings, *, sharpness: float | None = None
-                 ) -> PageRecord:
+def process_page(
+    source: PageSource, settings: Settings, *, sharpness: float | None = None
+) -> PageRecord:
     t0 = time.perf_counter()
-    rec = PageRecord(key=source.key, source=str(source.path), label=source.label,
-                     page_index=source.page_index, fingerprint=fingerprint(source.path),
-                     processed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    rec = PageRecord(
+        key=source.key,
+        source=str(source.path),
+        label=source.label,
+        page_index=source.page_index,
+        fingerprint=fingerprint(source.path),
+        processed_at=datetime.now(UTC).isoformat(timespec="seconds"),
+    )
 
     img = load_source(source, settings)
     full_w, full_h = img.size
@@ -205,8 +236,14 @@ def process_page(source: PageSource, settings: Settings, *, sharpness: float | N
     rec.sharpness = sharpness if sharpness is not None else sharpness_score(img_d)
     rec.blurry = rec.sharpness < settings.blur_threshold
 
-    read = lambda im: ocr.ocr_image(im, use_cls=True, min_region_conf=settings.min_region_conf,
-                                    box_thresh=settings.det_box_thresh)
+    def read(im):
+        return ocr.ocr_image(
+            im,
+            use_cls=True,
+            min_region_conf=settings.min_region_conf,
+            box_thresh=settings.det_box_thresh,
+        )
+
     result = read(img_d)
     rotation = 0
     if settings.auto_rotate:
@@ -220,7 +257,9 @@ def process_page(source: PageSource, settings: Settings, *, sharpness: float | N
             # The read looks strong only because the classifier turned each
             # line the right way up; the page itself is upside down and its
             # reading order would come out reversed. Re-read it rotated.
-            rec.weak_reason = f"classifier flipped {result.flipped_fraction:.0%} of lines (upside down?)"
+            rec.weak_reason = (
+                f"classifier flipped {result.flipped_fraction:.0%} of lines (upside down?)"
+            )
             rec.trials = {"0": round(result.score, 2)}
             flipped = read(rotate(img_d, 180))
             rec.trials["180"] = round(flipped.score, 2)
@@ -233,19 +272,33 @@ def process_page(source: PageSource, settings: Settings, *, sharpness: float | N
     regions = [r.scaled(1.0 / scale) for r in result.regions]
     clipped: set[int] = set()
     if settings.drop_clipped:
-        clipped = clipped_at_edge(regions, rec.width, edge_margin_frac=settings.edge_margin_frac,
-                                  max_width_frac=settings.clipped_max_width_frac)
+        clipped = clipped_at_edge(
+            regions,
+            rec.width,
+            edge_margin_frac=settings.edge_margin_frac,
+            max_width_frac=settings.clipped_max_width_frac,
+        )
     kept = [r for i, r in enumerate(regions) if i not in clipped]
-    lines = layout_page(kept, band_factor=settings.line_band_factor,
-                        heading_height_ratio=settings.heading_height_ratio,
-                        heading_max_chars=settings.heading_max_chars,
-                        heading_max_width_ratio=settings.heading_max_width_ratio,
-                        paragraph_gap_factor=settings.paragraph_gap_factor)
+    lines = layout_page(
+        kept,
+        band_factor=settings.line_band_factor,
+        heading_height_ratio=settings.heading_height_ratio,
+        heading_max_chars=settings.heading_max_chars,
+        heading_max_width_ratio=settings.heading_max_width_ratio,
+        paragraph_gap_factor=settings.paragraph_gap_factor,
+    )
 
     index_of = {id(r): i for i, r in enumerate(regions)}
     rec.regions = [dict(r.to_dict(), clipped=(i in clipped)) for i, r in enumerate(regions)]
-    rec.lines = [{"text": ln.text, "heading": ln.heading, "para_break_before": ln.para_break_before,
-                  "regions": [index_of[id(r)] for r in ln.regions]} for ln in lines]
+    rec.lines = [
+        {
+            "text": ln.text,
+            "heading": ln.heading,
+            "para_break_before": ln.para_break_before,
+            "regions": [index_of[id(r)] for r in ln.regions],
+        }
+        for ln in lines
+    ]
     rec.text = render_text(lines)
     rec.clipped_regions = len(clipped)
     rec.n_regions = len(kept)
@@ -269,7 +322,7 @@ class JobSummary:
     failed: int = 0
     stopped_early: bool = False
     elapsed: float = 0.0
-    records: list = field(default_factory=list)   # PageRecord, in page order
+    records: list = field(default_factory=list)  # PageRecord, in page order
     order_notes: list = field(default_factory=list)  # from sort=printed
 
     @property
@@ -288,10 +341,17 @@ class JobSummary:
 OnPage = Callable[[PageRecord, int, int, bool], None]
 
 
-def run_job(sources: list[PageSource], out_dir: str | Path, settings: Settings | None = None, *,
-            on_page: OnPage | None = None, should_stop: Callable[[], bool] | None = None,
-            force: bool = False, precheck: dict[str, float] | None = None,
-            title: str | None = None) -> JobSummary:
+def run_job(
+    sources: list[PageSource],
+    out_dir: str | Path,
+    settings: Settings | None = None,
+    *,
+    on_page: OnPage | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    force: bool = False,
+    precheck: dict[str, float] | None = None,
+    title: str | None = None,
+) -> JobSummary:
     """Read every page in order, writing results as each one completes.
 
     Resumable: `state.json` in out_dir records every finished page; a re-run
@@ -313,8 +373,11 @@ def run_job(sources: list[PageSource], out_dir: str | Path, settings: Settings |
     t0 = time.perf_counter()
 
     def finalize():
-        detect_furniture([state.pages[s.key] for s in sources if s.key in state.pages],
-                         band=settings.furniture_band, min_pages=settings.furniture_min_pages)
+        detect_furniture(
+            [state.pages[s.key] for s in sources if s.key in state.pages],
+            band=settings.furniture_band,
+            min_pages=settings.furniture_min_pages,
+        )
         state.save(out)
         write_outputs(out, state, sources, settings)
 
@@ -323,8 +386,12 @@ def run_job(sources: list[PageSource], out_dir: str | Path, settings: Settings |
             summary.stopped_early = True
             break
         prior = state.pages.get(src.key)
-        resumed = (prior is not None and prior.status == "done" and not force
-                   and prior.fingerprint == fingerprint(src.path))
+        resumed = (
+            prior is not None
+            and prior.status == "done"
+            and not force
+            and prior.fingerprint == fingerprint(src.path)
+        )
         if resumed:
             rec = prior
             summary.resumed += 1
@@ -332,11 +399,16 @@ def run_job(sources: list[PageSource], out_dir: str | Path, settings: Settings |
             try:
                 rec = process_page(src, settings, sharpness=precheck.get(src.key))
             except Exception as exc:
-                rec = PageRecord(key=src.key, source=str(src.path), label=src.label,
-                                 page_index=src.page_index, status="error",
-                                 error=f"{type(exc).__name__}: {exc}",
-                                 fingerprint=fingerprint(src.path) if src.path.exists() else "",
-                                 processed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+                rec = PageRecord(
+                    key=src.key,
+                    source=str(src.path),
+                    label=src.label,
+                    page_index=src.page_index,
+                    status="error",
+                    error=f"{type(exc).__name__}: {exc}",
+                    fingerprint=fingerprint(src.path) if src.path.exists() else "",
+                    processed_at=datetime.now(UTC).isoformat(timespec="seconds"),
+                )
                 summary.failed += 1
             else:
                 summary.processed += 1

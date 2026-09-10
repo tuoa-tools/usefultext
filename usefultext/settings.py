@@ -5,7 +5,7 @@ the CLI, the future web UI and tests all share one source of truth.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict, field
+from dataclasses import asdict, dataclass, field
 
 from .ocr import OCR_DPI, OCR_MIN_CONF, OCR_REGION_MIN_CONF
 
@@ -19,7 +19,7 @@ class Settings:
 
     # --- preprocessing --------------------------------------------------------
     max_long_edge: int = 2500           # downscale phone photos before inference
-    blur_threshold: float = 65.0        # edge-restricted Laplacian RMS; see preprocess.sharpness_score
+    blur_threshold: float = 65.0        # edge-restricted Laplacian RMS (preprocess.sharpness_score)
     auto_rotate: bool = True            # 0°/90° trial when the first read looks weak
     trial_long_edge: int = 1000         # reduced size for orientation trials (speed)
     weak_min_regions: int = 4           # fewer kept regions than this = "looks weak"
@@ -65,6 +65,6 @@ class Settings:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Settings":
+    def from_dict(cls, d: dict) -> Settings:
         known = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
         return cls(**known)

@@ -1,6 +1,13 @@
-from phototext.ocr import OcrRegion, OcrPageResult
-from phototext.layout import (group_lines, mark_headings, mark_paragraphs, render_text,
-                              render_markdown, tall_area_fraction, layout_page)
+from usefultext.layout import (
+    group_lines,
+    layout_page,
+    mark_headings,
+    mark_paragraphs,
+    render_markdown,
+    render_text,
+    tall_area_fraction,
+)
+from usefultext.ocr import OcrPageResult, OcrRegion
 
 
 def box(x, y, w, h, text, conf=0.95):
@@ -11,7 +18,7 @@ def test_reading_order_top_to_bottom_then_left_to_right():
     regions = [
         box(300, 100, 100, 20, "right-of-first"),
         box(10, 200, 200, 20, "second line"),
-        box(10, 104, 250, 20, "first line"),     # slightly lower centre, same band
+        box(10, 104, 250, 20, "first line"),  # slightly lower centre, same band
         box(10, 300, 200, 20, "third line"),
     ]
     lines = group_lines(regions, band_factor=0.6)
@@ -44,7 +51,9 @@ def test_paragraph_break_on_large_gap():
 
 
 def test_markdown_heading_marker():
-    lines = group_lines([box(0, 0, 100, 40, "Title")] + [box(0, 100 + i * 30, 300, 20, "body") for i in range(4)])
+    lines = group_lines(
+        [box(0, 0, 100, 40, "Title")] + [box(0, 100 + i * 30, 300, 20, "body") for i in range(4)]
+    )
     mark_headings(lines)
     md = render_markdown(lines, heading_level=2)
     assert md.startswith("## Title")
@@ -61,7 +70,7 @@ def test_page_result_gate_and_score():
     r = OcrPageResult(text="", mean_conf=0.6, n_regions=10)
     assert r.low_confidence is True
     assert r.score == 6.0
-    assert OcrPageResult("", 0.0, 0).low_confidence is False   # caller decides on blank pages
+    assert OcrPageResult("", 0.0, 0).low_confidence is False  # caller decides on blank pages
 
 
 def test_geometry_is_independent_of_corner_order():
@@ -103,10 +112,11 @@ def test_full_width_tall_line_is_not_a_heading():
 
 
 def test_clipped_regions_at_photo_edge():
-    from phototext.layout import clipped_at_edge
+    from usefultext.layout import clipped_at_edge
+
     body = [box(190, 100 + i * 52, 770, 48, "body") for i in range(6)]
     sliver = [box(1082, 230 + i * 41, 117, 42, "Where tl") for i in range(4)]
-    page_number = box(1000, 1500, 30, 40, "7")           # not at the edge
+    page_number = box(1000, 1500, 30, 40, "7")  # not at the edge
     regions = body + sliver + [page_number]
     idx = clipped_at_edge(regions, image_width=1200)
     assert idx == set(range(6, 10))

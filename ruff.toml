@@ -1,0 +1,13 @@
+line-length = 100
+target-version = "py313"
+extend-exclude = [".venv", "frontend", "redaction_detection_poc", "fixtures", "Documents", "output*"]
+
+[lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
+
+[lint.isort]
+known-first-party = ["usefultext", "app"]
+
+[format]
+# settings.py keeps its hand-aligned comment columns: every threshold with its calibration note.
+exclude = ["usefultext/settings.py"]

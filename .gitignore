@@ -11,3 +11,10 @@ fixtures/derived/
 
 # Reference material from a previous project — not part of this codebase.
 redaction_detection_poc/
+
+# Build and tooling artefacts.
+app/static/
+dist/
+build/
+*.egg-info/
+.ruff_cache/

@@ -5,13 +5,14 @@ fall back to EXIF DateTimeOriginal (then file mtime) when the names are
 unhelpful — random UUID/hash exports, or names with no numbers at all.
 PDFs expand to one PageSource per page, in document order.
 """
+
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
 
 from PIL import Image
 
@@ -23,8 +24,9 @@ SORT_MODES = ("auto", "name", "time", "printed")
 @dataclass(frozen=True)
 class PageSource:
     """One page to read: an image file, or one page of a PDF."""
+
     path: Path
-    page_index: int = 0     # 0-based page within a PDF; 0 for images
+    page_index: int = 0  # 0-based page within a PDF; 0 for images
     n_pages: int = 1
 
     @property
@@ -67,7 +69,7 @@ def exif_datetime(path: Path) -> datetime | None:
         with Image.open(path) as im:
             exif = im.getexif()
             ifd = exif.get_ifd(0x8769)
-            raw = ifd.get(36867) or exif.get(306)      # DateTimeOriginal, else DateTime
+            raw = ifd.get(36867) or exif.get(306)  # DateTimeOriginal, else DateTime
             if not raw:
                 return None
             dt = datetime.strptime(str(raw).strip(), "%Y:%m:%d %H:%M:%S")
@@ -88,7 +90,7 @@ def order_files(files: Iterable[Path], mode: str = "auto") -> tuple[list[Path], 
     files = list(files)
     if mode not in SORT_MODES:
         raise ValueError(f"sort must be one of {SORT_MODES}, got {mode!r}")
-    if mode == "printed":       # printed numbers are only known after OCR; start from auto
+    if mode == "printed":  # printed numbers are only known after OCR; start from auto
         mode = "auto"
     if mode == "auto":
         unhelpful = sum(name_looks_unhelpful(f.stem) for f in files)
@@ -111,7 +113,11 @@ def discover_files(inputs: Iterable[str | Path], recursive: bool = False) -> lis
         if p.is_dir():
             it = p.rglob("*") if recursive else p.iterdir()
             for f in it:
-                if f.is_file() and f.suffix.lower() in SUPPORTED_EXTS and not f.name.startswith("."):
+                if (
+                    f.is_file()
+                    and f.suffix.lower() in SUPPORTED_EXTS
+                    and not f.name.startswith(".")
+                ):
                     seen.setdefault(f.resolve(), None)
         elif p.is_file() and p.suffix.lower() in SUPPORTED_EXTS:
             seen.setdefault(p.resolve(), None)
@@ -120,6 +126,7 @@ def discover_files(inputs: Iterable[str | Path], recursive: bool = False) -> lis
 
 def pdf_page_count(path: Path) -> int:
     import pymupdf
+
     with pymupdf.open(path) as doc:
         return doc.page_count
 
@@ -135,8 +142,9 @@ def expand_sources(files: Iterable[Path]) -> list[PageSource]:
     return sources
 
 
-def discover_sources(inputs: Iterable[str | Path], sort: str = "auto",
-                     recursive: bool = False) -> tuple[list[PageSource], str]:
+def discover_sources(
+    inputs: Iterable[str | Path], sort: str = "auto", recursive: bool = False
+) -> tuple[list[PageSource], str]:
     """Files/folders → ordered list of pages, plus the sort mode used."""
     files = discover_files(inputs, recursive)
     ordered, mode = order_files(files, sort)

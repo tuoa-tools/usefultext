@@ -7,6 +7,7 @@
 - sharpness_score(): variance of the Laplacian — a "looks blurry" pre-check.
 - rotate(): whole-page rotation in 90° steps, used by the orientation trial.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,6 +30,7 @@ def register_heif() -> bool:
     if _heif_ok is None:
         try:
             import pillow_heif
+
             pillow_heif.register_heif_opener()
             _heif_ok = True
         except Exception as exc:
@@ -65,8 +67,9 @@ def downscale(img: Image.Image, max_long_edge: int) -> tuple[Image.Image, float]
     return img.resize(new_size, Image.Resampling.LANCZOS), scale
 
 
-def sharpness_score(img: Image.Image, norm_long_edge: int = 1000,
-                    edge_min_gradient: float = 20.0) -> float:
+def sharpness_score(
+    img: Image.Image, norm_long_edge: int = 1000, edge_min_gradient: float = 20.0
+) -> float:
     """Variance-of-Laplacian blur check, measured over edge pixels only.
 
     A plain Laplacian variance over the whole frame mostly measures how much
@@ -84,8 +87,7 @@ def sharpness_score(img: Image.Image, norm_long_edge: int = 1000,
     a = np.asarray(grey, dtype=np.float32)
     if a.shape[0] < 3 or a.shape[1] < 3:
         return 0.0
-    lap = (a[:-2, 1:-1] + a[2:, 1:-1] + a[1:-1, :-2] + a[1:-1, 2:]
-           - 4.0 * a[1:-1, 1:-1])
+    lap = a[:-2, 1:-1] + a[2:, 1:-1] + a[1:-1, :-2] + a[1:-1, 2:] - 4.0 * a[1:-1, 1:-1]
     gy, gx = np.gradient(a)
     grad = np.hypot(gx, gy)[1:-1, 1:-1]
     mask = grad >= edge_min_gradient
@@ -96,7 +98,7 @@ def sharpness_score(img: Image.Image, norm_long_edge: int = 1000,
 
 _ROTATE = {
     0: None,
-    90: Image.Transpose.ROTATE_90,     # counter-clockwise
+    90: Image.Transpose.ROTATE_90,  # counter-clockwise
     180: Image.Transpose.ROTATE_180,
     270: Image.Transpose.ROTATE_270,
 }

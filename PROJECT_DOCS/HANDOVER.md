@@ -3,7 +3,9 @@
 _Status as of 2026-09-10. Milestone 1 (CLI) is complete and calibrated on the
 sample photos; Milestone 2 (local app with web UI) is designed but not started.
 `BRIEF.md` remains the specification; this document records what was built,
-what was learned, and what to do next._
+what was learned, and what to do next. Renamed UsefulText on 2026-09-10:
+step 0 of `PLAN_M2.md` turned `phototext/` into `usefultext/` and
+`doc_reader.py` into `usefultext/cli.py`; the names below are as they were._
 
 ## 1. State of the repository
 
@@ -138,6 +140,9 @@ Open:
 - RAG: local stack stays offline; any hosted model is a per-document opt-in.
 
 ## 6. Next steps, in order
+
+_Expanded on 2026-09-10 into `PLAN_M2.md` (steps 0–5, decisions to confirm,
+and the gaps this list left open). Read that first._
 
 1. **Pipeline prep for the UI** (1–2 days): per-page preview JPEGs; explicit
    job page list with exclude/replace; `corrections.json` overlay applied at
