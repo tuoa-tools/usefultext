@@ -25,7 +25,7 @@ def test_page_files_named_by_position_and_photo_and_cleaned_on_reorder(tmp_path,
     write_outputs(tmp_path, state, sources, Settings())
     names = sorted(p.name for p in (tmp_path / "pages").glob("*.txt"))
     assert names == ["page_001_IMG_0042.txt", "page_002_IMG_0043.txt"]
-    first = (tmp_path / "pages" / "page_001_IMG_0042.txt").read_text().splitlines()
+    first = (tmp_path / "pages" / "page_001_IMG_0042.txt").read_text(encoding="utf-8").splitlines()
     assert first[0] == "[page 1 of 2 · IMG_0042.jpg · read quality 0.98]"
     assert first[1] == "" and first[2] == "Chapter"
 
@@ -34,7 +34,7 @@ def test_page_files_named_by_position_and_photo_and_cleaned_on_reorder(tmp_path,
     names = sorted(p.name for p in (tmp_path / "pages").glob("*.txt"))
     assert names == ["page_001_IMG_0043.txt", "page_002_IMG_0042.txt"]
 
-    text = (tmp_path / "document.txt").read_text()
+    text = (tmp_path / "document.txt").read_text(encoding="utf-8")
     assert text.startswith("Test\n") and text.count("--- page ") == 2
     assert text.index("--- page 1 (IMG_0043.jpg) ---") < text.index("--- page 2 (IMG_0042.jpg) ---")
 
@@ -46,19 +46,22 @@ def test_corrections_reach_every_output(tmp_path, make_record):
     c.set("p1", 1, "Body of a.jpg, corrected", rec.lines[1]["text"])
     write_outputs(tmp_path, state, sources, Settings(), corrections=c)
 
-    page = (tmp_path / "pages" / "page_001_a.txt").read_text()
+    page = (tmp_path / "pages" / "page_001_a.txt").read_text(encoding="utf-8")
     assert (
         page.splitlines()[0].endswith("· 1 line corrected]") and "Body of a.jpg, corrected" in page
     )
-    md = (tmp_path / "document.md").read_text()
+    md = (tmp_path / "document.md").read_text(encoding="utf-8")
     assert "Body of a.jpg, corrected" in md and "1 line corrected" in md and "# Chapter" in md
-    rows = [json.loads(line) for line in (tmp_path / "document.jsonl").read_text().splitlines()]
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "document.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
     corrected = [r for r in rows if r["corrected"]]
     assert len(corrected) == 1
     assert corrected[0]["text"] == "Body of a.jpg"  # raw OCR stays
     assert corrected[0]["corrected_line"] == "Body of a.jpg, corrected"
     assert all(r["page_id"] in ("p1", "p2") for r in rows)
-    head, row1 = (tmp_path / "report.csv").read_text().splitlines()[:2]
+    head, row1 = (tmp_path / "report.csv").read_text(encoding="utf-8").splitlines()[:2]
     assert head.split(",") == REPORT_COLUMNS
     assert row1.split(",")[REPORT_COLUMNS.index("corrected_lines")] == "1"
 
@@ -68,7 +71,7 @@ def test_quality_notes_follow_the_provenance_line(tmp_path, make_record):
     rec = state.pages[sources[0].key]
     rec.blurry, rec.sharpness = True, 52.0
     write_outputs(tmp_path, state, sources, Settings())
-    lines = (tmp_path / "pages" / "page_001_a.txt").read_text().splitlines()
+    lines = (tmp_path / "pages" / "page_001_a.txt").read_text(encoding="utf-8").splitlines()
     assert lines[0].startswith("[page 1 of 1") and lines[1].startswith("[The photo looks blurry")
     assert lines[2] == ""
 

@@ -112,7 +112,7 @@ def main() -> int:
     if not sources:
         print("no pages with references found", file=sys.stderr)
         return 1
-    refs = {s.key: (ref_dir / f"{s.path.stem}.txt").read_text() for s in sources}
+    refs = {s.key: (ref_dir / f"{s.path.stem}.txt").read_text(encoding="utf-8") for s in sources}
 
     original_load = pipeline.load_source
     settings = Settings()

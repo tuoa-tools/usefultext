@@ -73,5 +73,5 @@ def test_roundtrip_and_missing_file(tmp_path):
     assert page[2].text == "fixed" and page[2].ocr == "orig" and page[2].at
     assert (tmp_path / CORRECTIONS_FILE).exists()
     assert Corrections.load(tmp_path / "nowhere").total() == 0
-    (tmp_path / CORRECTIONS_FILE).write_text("{not json")
+    (tmp_path / CORRECTIONS_FILE).write_text("{not json", encoding="utf-8")
     assert Corrections.load(tmp_path).total() == 0  # corrupt file never blocks a run
