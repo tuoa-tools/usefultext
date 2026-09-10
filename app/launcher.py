@@ -128,6 +128,12 @@ def main(argv: list[str] | None = None) -> int:
         "--browser", action="store_true", help="open a browser tab instead of the app's window"
     )
     parser.add_argument(
+        "--window",
+        action="store_true",
+        help="open the app's own window even on Windows (the default elsewhere; on Windows the "
+        "WebView2 bridge misbehaved on a real machine, so a browser tab is the default there)",
+    )
+    parser.add_argument(
         "--no-browser", action="store_true", help="only run the server; open nothing"
     )
     args = parser.parse_args(argv)
@@ -158,7 +164,12 @@ def main(argv: list[str] | None = None) -> int:
     from app.main import app  # after the environment is set
 
     url = launch_url(port, token)
-    use_window = not args.browser and not args.no_browser and window.available()
+    use_window = (
+        not args.browser
+        and not args.no_browser
+        and window.available()
+        and (sys.platform != "win32" or args.window)
+    )
     win = window.DesktopWindow(url, folder / "webview", token) if use_window else None
 
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_config=None, log_level="info")

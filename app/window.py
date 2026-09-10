@@ -2,6 +2,12 @@
 WebKitGTK on Linux) around the launch URL. When pywebview or its engine is
 missing the launcher falls back to a browser tab.
 
+On Windows the tab is the default (launcher `--window` opts in): on a real
+machine the WebView2 bridge spammed "AccessibilityObject.Bounds" errors, hit
+the recursion limit and failed a COM QueryInterface, leaving the page unable
+to complete a request (v0.3.0, 2026-09-10). The tab is the route
+media_downloader has always used on Windows.
+
 The window is also where native dialogs come from: the page calls
 `window.pywebview.api.pick_folder()` and gets a path back, which is how
 "move into the library" becomes a dialog rather than a typed path.

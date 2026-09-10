@@ -11,7 +11,9 @@ your machine. Nothing is uploaded; the OCR engine and its models are inside the 
   System Settings → Privacy & Security and choose "Open Anyway", or in Terminal run
   `xattr -d com.apple.quarantine /Applications/UsefulText.app`.)
 - **Windows**: run `UsefulText-windows-x64-setup.exe`. It installs for your user only (no
-  administrator needed). SmartScreen may ask "More info → Run anyway" the first time.
+  administrator needed). SmartScreen may ask "More info → Run anyway" the first time. The
+  app opens in your browser; close the tab and the app exits by itself a couple of minutes
+  later, once nothing is being read.
 - **Linux**: unpack the tarball anywhere and run `UsefulText/UsefulText`. With WebKitGTK and
   PyGObject installed it opens in its own window; otherwise in your browser.
 

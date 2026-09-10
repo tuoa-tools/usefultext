@@ -25,6 +25,8 @@ Download from the [releases page](https://github.com/tuoa-tools/usefultext/relea
   normally.
 - **Windows**: `UsefulText-windows-x64-setup.exe`, a per-user install with no
   administrator needed. SmartScreen may want "More info → Run anyway" once.
+  The app opens in your browser (the app's own window is opt-in on Windows
+  for now); close the tab and it exits by itself once nothing is being read.
 - **Linux**: unpack the tarball and run `UsefulText/UsefulText`. With
   WebKitGTK and PyGObject installed it opens in its own window; otherwise in
   your browser.

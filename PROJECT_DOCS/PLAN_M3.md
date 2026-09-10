@@ -110,8 +110,21 @@ tkinter, pytest, the CLI's console script.
 - [x] `packaging/windows.iss`: per-user install to
       `%LOCALAPPDATA%\Programs\UsefulText`, shortcuts running
       `pythonw.exe -m app.launcher`, the icon.
-- [ ] Done when: the installer built by `workflow_dispatch` installs and
-      runs on Adam's Windows machine, HEIC and PDF included.
+- [x] First real-machine finding (Adam, v0.3.0, 2026-09-10): the installer
+      installed and the window opened, but sat on "Loading…". The log:
+      pywebview's WinForms side repeating "Error while processing
+      window.native.AccessibilityObject.Bounds", then "maximum recursion
+      depth exceeded", then a COM "QueryInterface … no such interface
+      supported" from the WebView2 control — the window's UI thread was
+      stuck in an error storm and the page's requests never completed.
+      Two changes: the first-run screen shows its error instead of
+      "Loading…", and the window's bridge hands the page the launch token
+      (sent as a header, so the cookie is not load-bearing in a window).
+      And the decision: on Windows the app opens in a browser tab by
+      default (`--window` opts into the window), media_downloader's route
+      there all along; idle shutdown ends the server once the tab is gone.
+- [ ] Done when: the installer installs and runs on Adam's Windows
+      machine in the browser, HEIC and PDF included.
 
 ### Step 3 — Linux — written 2026-09-10, proved by the workflow
 
