@@ -123,5 +123,13 @@ describe('EditorView', () => {
     const frame = await screen.findByTestId('editor-frame');
     // jsdom: innerHeight 768, the frame's top at 0 → 768 − 16 of margin.
     await waitFor(() => expect(frame).toHaveStyle({ height: '752px' }));
+    // The picture panel: "Line" is the default preset, and the first line is selected.
+    expect(screen.getByRole('button', { name: 'Line' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Page' })).toHaveAttribute('aria-pressed', 'false');
+    screen.getByRole('button', { name: 'Page' }).click();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Page' })).toHaveAttribute('aria-pressed', 'true')
+    );
+    expect(screen.getByRole('button', { name: 'Zoom in' })).toBeEnabled();
   });
 });

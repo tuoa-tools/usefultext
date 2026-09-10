@@ -487,9 +487,21 @@ the region boxes made a split feasible.
       and the spread is printed page 28; a stripped column-top line hands
       its paragraph break to the line after it (corrections.overlay), so
       the columns still join without a blank line.
-- [x] The strip's manual zoom (parked item): +/− buttons and "fit" on the
-      magnified strip, ×1.25 per step between ½× and 6× of the automatic
-      fit, remembered in the browser.
+- [x] The strip's manual zoom (parked item) — first as +/− and "fit" on the
+      strip, then, after Adam's click-through the same day (with a
+      large-text page, the strip plus the full page below it was clumsy),
+      one picture panel that fills the editor's left column: "Page" fits
+      the whole page, "Line" fits the selected line's width (the strip's
+      rule: a margin either side, never past ~3× the page fit), +/− zoom
+      from either (×1.25 per step, ½×–8×), the view keeps the selected
+      line centred so arrow keys and "next suspect" move the picture, and
+      a box is clickable at any zoom. The choice is remembered per
+      browser. Geometry in `frontend/src/lib/viewer.ts` (tested).
+- [x] Also found in that click-through: the editor's fixed frame height
+      (columns scrolling inside themselves) was only applied when the
+      page's data was already cached — the hook measured once on mount,
+      before the frame existed. It now measures when the frame appears;
+      a render test loads a page fresh.
 - [x] Tests: synthetic two-column pages (headline, mid-page full-width
       heading, forced single column, dialogue-width lines, contents-list
       numbers, right-aligned attribution), the real engine on a born-digital

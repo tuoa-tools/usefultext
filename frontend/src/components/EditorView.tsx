@@ -21,6 +21,16 @@ import {
 } from '../api';
 import { lineBox } from '../lib/boxes';
 import { plural } from '../lib/format';
+import {
+  clamp,
+  lineFit,
+  pageFit,
+  viewport,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  ZOOM_STEP,
+  type Preset,
+} from '../lib/viewer';
 import { includedPages, needsAttention, neighbourPage, nextNeedingAttention } from '../lib/pages';
 import type { Route } from '../lib/route';
 import ErrorText from './ErrorText';
@@ -277,18 +287,15 @@ function PageEditor({
         </details>
       )}
       {/* On a wide screen the two columns take exactly the height left under the toolbars
-          and scroll inside themselves, so the page itself never scrolls: the navigation,
-          the magnified strip and the full page stay put while the text moves. */}
+          and the text scrolls inside its own box, so the page itself never scrolls: the
+          navigation and the picture stay put while the text moves. */}
       <div
         ref={frameRef}
         data-testid="editor-frame"
         className="grid gap-4 lg:grid-cols-2"
         style={frameHeight ? { height: frameHeight } : undefined}
       >
-        <div className="min-h-0 space-y-3 overflow-y-auto">
-          <LineZoom page={p} lineIndex={selectedLine} />
-          <PagePreview page={p} selected={selectedLine} onSelect={moveTo} />
-        </div>
+        <PageViewer page={p} selected={selectedLine} onSelect={moveTo} />
         <LineList
           page={p}
           selected={selectedLine}
@@ -342,144 +349,38 @@ function useViewportHeight(): [(el: HTMLDivElement | null) => void, number | nul
   return [setEl, value];
 }
 
-const ZOOM_KEY = 'usefultext.lineZoom';
-const ZOOM_STEP = 1.25;
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 6;
+const VIEW_KEY = 'usefultext.viewer';
 
-/** The strip's magnification over its automatic fit, remembered per browser. */
-function storedZoom(): number {
+interface ViewChoice {
+  preset: Preset;
+  /** Magnification over the preset's fit. */
+  zoom: number;
+}
+
+/** The last preset and zoom, remembered per browser. */
+function storedView(): ViewChoice {
   try {
-    const v = Number(localStorage.getItem(ZOOM_KEY));
-    return v >= ZOOM_MIN && v <= ZOOM_MAX ? v : 1;
+    const raw = JSON.parse(localStorage.getItem(VIEW_KEY) ?? '') as Partial<ViewChoice>;
+    const zoom = Number(raw.zoom);
+    return {
+      preset: raw.preset === 'page' ? 'page' : 'line',
+      zoom: zoom >= ZOOM_MIN && zoom <= ZOOM_MAX ? zoom : 1,
+    };
   } catch {
-    return 1;
+    return { preset: 'line', zoom: 1 };
   }
 }
 
-/** The selected line's own patch of the photo, magnified, with a line or so of
- *  context above and below — so a line can be checked without scrolling the page.
- *  The fit shows the line's full width; the +/− buttons override it for tiny print
- *  or a wide line on a dense page. */
-function LineZoom({ page, lineIndex }: { page: PageDetail; lineIndex: number | null }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
-  const [zoom, setZoom] = useState(storedZoom);
-  const changeZoom = (factor: number) => {
-    const next = factor === 0 ? 1 : clamp(zoom * factor, ZOOM_MIN, ZOOM_MAX);
-    setZoom(next);
-    try {
-      localStorage.setItem(ZOOM_KEY, String(next));
-    } catch {
-      /* a private window, or storage blocked: the zoom just isn't remembered */
-    }
-  };
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  const preview = page.read?.preview;
-  const pageW = page.width ?? 1;
-  const pageH = page.height ?? 1;
-  const line = lineIndex === null ? null : page.lines.find((ln) => ln.index === lineIndex);
-  const box = line ? lineBox(line, page.regions) : null;
-  const height = 176;
-  if (!preview || !box) {
-    return (
-      <div
-        ref={ref}
-        className="flex items-center justify-center rounded-xl bg-white text-sm text-slate-500 shadow-sm"
-        style={{ height }}
-      >
-        Click a line to see it up close.
-      </div>
-    );
-  }
-  const [x0, y0, x1, y1] = box;
-  const boxW = x1 - x0;
-  // Show the line's full width plus a margin, but never magnify past about three times
-  // the full-page fit (a two-word heading would otherwise fill the strip with one letter).
-  const fitW = Math.min(pageW, Math.max(boxW * 1.1 + pageW * 0.02, pageW * 0.35));
-  const viewW = clamp(fitW / zoom, pageW * 0.05, pageW);
-  const scale = width / viewW;
-  const viewH = height / scale;
-  const left = clamp((x0 + x1) / 2 - viewW / 2, 0, Math.max(0, pageW - viewW));
-  const top = clamp((y0 + y1) / 2 - viewH / 2, 0, Math.max(0, pageH - viewH));
-  return (
-    <div
-      ref={ref}
-      className="relative overflow-hidden rounded-xl bg-white shadow-sm"
-      style={{ height }}
-      aria-label={`Line ${(lineIndex ?? 0) + 1}, magnified`}
-    >
-      {width > 0 && (
-        <>
-          <img
-            src={preview.url}
-            alt=""
-            className="absolute max-w-none"
-            style={{
-              width: pageW * scale,
-              height: pageH * scale,
-              left: -left * scale,
-              top: -top * scale,
-            }}
-          />
-          <div
-            className="pointer-events-none absolute rounded-sm border-2 border-blue-600/70 bg-blue-500/10"
-            style={{
-              left: (x0 - left) * scale,
-              top: (y0 - top) * scale,
-              width: boxW * scale,
-              height: (y1 - y0) * scale,
-            }}
-          />
-          <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
-            {zoom !== 1 && (
-              <button
-                type="button"
-                title="Back to the automatic fit"
-                className="rounded bg-white/85 px-1.5 py-0.5 text-xs text-slate-700 shadow hover:bg-white"
-                onClick={() => changeZoom(0)}
-              >
-                fit
-              </button>
-            )}
-            <button
-              type="button"
-              aria-label="Zoom out"
-              title="Zoom out"
-              disabled={zoom <= ZOOM_MIN}
-              className="rounded bg-white/85 px-1.5 py-0.5 text-xs text-slate-700 shadow hover:bg-white disabled:opacity-40"
-              onClick={() => changeZoom(1 / ZOOM_STEP)}
-            >
-              −
-            </button>
-            <button
-              type="button"
-              aria-label="Zoom in"
-              title="Zoom in"
-              disabled={zoom >= ZOOM_MAX}
-              className="rounded bg-white/85 px-1.5 py-0.5 text-xs text-slate-700 shadow hover:bg-white disabled:opacity-40"
-              onClick={() => changeZoom(ZOOM_STEP)}
-            >
-              +
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
+const viewerButton = 'rounded px-1.5 py-0.5 text-xs shadow disabled:opacity-40';
+const viewerPlain = `${viewerButton} bg-white/85 text-slate-700 hover:bg-white`;
+const viewerActive = `${viewerButton} bg-blue-600 text-white`;
 
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, v));
-}
-
-function PagePreview({
+/** The photo, in one panel that fills the column. "Page" fits the whole page; "Line"
+ *  fits the selected line's width (a line or so of context either side, at most about
+ *  three times the page fit); +/− zoom from either. The view keeps the selected line
+ *  centred, so moving through the lines moves the picture, and clicking a box selects
+ *  that line at any zoom. */
+function PageViewer({
   page,
   selected,
   onSelect,
@@ -488,46 +389,154 @@ function PagePreview({
   selected: number | null;
   onSelect: (i: number) => void;
 }) {
-  const preview = page.read?.preview;
-  const w = page.width ?? 1;
-  const h = page.height ?? 1;
+  const ref = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const [view, setView] = useState<ViewChoice>(storedView);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const boxes = useMemo(
     () => page.lines.map((ln) => lineBox(ln, page.regions)),
     [page.lines, page.regions]
   );
-  if (!preview) return <p className="text-slate-500">No preview for this page.</p>;
+  const preview = page.read?.preview;
+  const pageW = page.width ?? 1;
+  const pageH = page.height ?? 1;
+  const at = page.lines.findIndex((ln) => ln.index === selected);
+  const box = at >= 0 ? boxes[at] : null;
+  const choose = (next: ViewChoice) => {
+    setView(next);
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify(next));
+    } catch {
+      /* a private window, or storage blocked: the choice just isn't remembered */
+    }
+  };
+  const zoomBy = (factor: number) =>
+    choose({ ...view, zoom: clamp(view.zoom * factor, ZOOM_MIN, ZOOM_MAX) });
+  const pick = (preset: Preset) => choose({ preset, zoom: 1 });
+
+  const panelClass = 'relative min-h-[45vh] overflow-hidden rounded-xl bg-white shadow-sm';
+  if (!preview) {
+    return (
+      <div ref={ref} className={`${panelClass} flex items-center justify-center`}>
+        <p className="text-sm text-slate-500">No preview for this page.</p>
+      </div>
+    );
+  }
+  const lineMode = view.preset === 'line' && box !== null;
+  const fit =
+    size.w > 0 && size.h > 0
+      ? lineMode
+        ? lineFit(box, pageW, size.w)
+        : pageFit(pageW, pageH, size.w, size.h)
+      : 0;
+  const scale = fit * view.zoom;
+  const centre: [number, number] = box
+    ? [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]
+    : [pageW / 2, pageH / 2];
+  const vp = viewport(scale, pageW, pageH, size.w, size.h, centre);
+  const placed = {
+    width: pageW * scale,
+    height: pageH * scale,
+    left: -vp.left * scale,
+    top: -vp.top * scale,
+  };
   return (
-    <div className="relative overflow-hidden rounded-xl bg-white shadow-sm">
-      <img src={preview.url} alt={`Page ${page.position}`} className="block w-full" />
-      {/* The boxes are in page pixels; the viewBox scales them with the image. */}
-      <svg
-        viewBox={`0 0 ${w} ${h}`}
-        className="absolute inset-0 h-full w-full"
-        preserveAspectRatio="none"
-      >
-        {boxes.map((b, i) =>
-          b ? (
-            <rect
-              key={i}
-              x={b[0]}
-              y={b[1]}
-              width={b[2] - b[0]}
-              height={b[3] - b[1]}
-              className={`cursor-pointer ${
-                selected === page.lines[i].index
-                  ? 'fill-blue-500/25 stroke-blue-600'
-                  : page.lines[i].origin === 'human'
-                    ? 'fill-transparent stroke-blue-400/70'
-                    : page.lines[i].suspects.length > 0
-                      ? 'fill-amber-300/20 stroke-amber-500'
-                      : 'fill-transparent stroke-amber-500/40'
-              }`}
-              strokeWidth={Math.max(2, w / 400)}
-              onClick={() => onSelect(page.lines[i].index)}
-            />
-          ) : null
+    <div ref={ref} className={panelClass}>
+      {scale > 0 && (
+        <>
+          <img
+            src={preview.url}
+            alt={`Page ${page.position}`}
+            className="absolute max-w-none"
+            style={placed}
+          />
+          {/* The boxes are in page pixels; the viewBox scales them with the image. */}
+          <svg
+            viewBox={`0 0 ${pageW} ${pageH}`}
+            preserveAspectRatio="none"
+            className="absolute"
+            style={placed}
+          >
+            {boxes.map((b, i) =>
+              b ? (
+                <rect
+                  key={i}
+                  x={b[0]}
+                  y={b[1]}
+                  width={b[2] - b[0]}
+                  height={b[3] - b[1]}
+                  className={`cursor-pointer ${
+                    selected === page.lines[i].index
+                      ? 'fill-blue-500/25 stroke-blue-600'
+                      : page.lines[i].origin === 'human'
+                        ? 'fill-transparent stroke-blue-400/70'
+                        : page.lines[i].suspects.length > 0
+                          ? 'fill-amber-300/20 stroke-amber-500'
+                          : 'fill-transparent stroke-amber-500/40'
+                  }`}
+                  strokeWidth={2}
+                  vectorEffect="non-scaling-stroke"
+                  onClick={() => onSelect(page.lines[i].index)}
+                />
+              ) : null
+            )}
+          </svg>
+        </>
+      )}
+      <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
+        <button
+          type="button"
+          aria-pressed={view.preset === 'page'}
+          title="Fit the whole page"
+          className={view.preset === 'page' ? viewerActive : viewerPlain}
+          onClick={() => pick('page')}
+        >
+          Page
+        </button>
+        <button
+          type="button"
+          aria-pressed={view.preset === 'line'}
+          disabled={!box}
+          title={box ? 'Fit the selected line' : 'Select a line first'}
+          className={view.preset === 'line' ? viewerActive : viewerPlain}
+          onClick={() => pick('line')}
+        >
+          Line
+        </button>
+        <button
+          type="button"
+          aria-label="Zoom out"
+          title="Zoom out"
+          disabled={view.zoom <= ZOOM_MIN}
+          className={viewerPlain}
+          onClick={() => zoomBy(1 / ZOOM_STEP)}
+        >
+          −
+        </button>
+        {view.zoom !== 1 && (
+          <span className="rounded bg-white/85 px-1 text-xs text-slate-700 shadow">
+            ×{view.zoom.toFixed(1)}
+          </span>
         )}
-      </svg>
+        <button
+          type="button"
+          aria-label="Zoom in"
+          title="Zoom in"
+          disabled={view.zoom >= ZOOM_MAX}
+          className={viewerPlain}
+          onClick={() => zoomBy(ZOOM_STEP)}
+        >
+          +
+        </button>
+      </div>
     </div>
   );
 }
