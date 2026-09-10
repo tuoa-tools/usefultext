@@ -39,7 +39,7 @@ def main() -> int:
             return 1
         shutil.copy2(src, MODELS_OUT / name)
         total += src.stat().st_size
-    print(f"models: {len(MODEL_FILES)} files, {total / 1e6:.1f} MB → {MODELS_OUT}")
+    print(f"models: {len(MODEL_FILES)} files, {total / 1e6:.1f} MB -> {MODELS_OUT}")
 
     index = ROOT / "app" / "static" / "index.html"
     if not index.exists():

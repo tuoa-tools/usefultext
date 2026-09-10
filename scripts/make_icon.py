@@ -70,7 +70,7 @@ def main() -> int:
                 ["iconutil", "-c", "icns", str(iconset), "-o", str(OUT / "icon.icns")], check=True
             )
         made.append("icon.icns")
-    print("wrote", ", ".join(made), "→", OUT)
+    print("wrote", ", ".join(made), "->", OUT)
     return 0
 
 
