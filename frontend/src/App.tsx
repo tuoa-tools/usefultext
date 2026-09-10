@@ -20,7 +20,11 @@ export default function App() {
   const health = useQuery({ queryKey: ['health'], queryFn: getHealth });
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-5 p-4 sm:p-6">
+    <main
+      className={`mx-auto w-full space-y-5 p-4 sm:p-6 ${
+        route.view === 'document' && route.tab === 'editor' ? 'max-w-[1500px]' : 'max-w-5xl'
+      }`}
+    >
       <header className="flex items-center justify-between">
         <button
           type="button"

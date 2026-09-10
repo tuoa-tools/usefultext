@@ -293,13 +293,54 @@ def test_corrections_through_the_api(client, library):
     assert client.get(f"/api/documents/{doc_id}/export/csv").text.splitlines()[1].count(",") > 10
     z = client.get(f"/api/documents/{doc_id}/export/pages.zip")
     assert z.status_code == 200 and z.headers["content-type"] == "application/zip"
-    assert client.get(f"/api/documents/{doc_id}/export/docx").status_code == 501
     assert client.delete(f"/api/documents/{doc_id}/pages/{pid}/lines/1").json()["origin"] == "ocr"
     assert client.get(f"/api/documents/{doc_id}").json()["corrected_lines"] == 0
     assert (
         client.put(f"/api/documents/{doc_id}/pages/{pid}/lines/9", json={"text": "x"}).status_code
         == 404
     )
+
+
+def test_suspects_ignore_and_docx(client, library):
+    doc_id = make_doc(client, files=("a.jpg",))
+    read_all(client, doc_id, 1)
+    pid = client.get(f"/api/documents/{doc_id}").json()["pages"][0]["id"]
+    # the fake's lines contain "jpg" — not a word — so every line has one suspect
+    view = client.get(f"/api/documents/{doc_id}").json()
+    assert view["pages"][0]["read"]["suspects"] == 3
+    page = client.get(f"/api/documents/{doc_id}/pages/{pid}").json()
+    assert page["suspects"] == 3
+    s = page["lines"][1]["suspects"]
+    assert (
+        len(s) == 1
+        and s[0]["word"] == "jpg"
+        and page["lines"][1]["text"][s[0]["start"] : s[0]["end"]] == "jpg"
+    )
+    # a correction changes what is checked
+    r = client.put(
+        f"/api/documents/{doc_id}/pages/{pid}/lines/1",
+        json={"text": "First line of a page, cight penguins."},
+    )
+    assert [x["word"] for x in r.json()["suspects"]] == ["cight"]
+    # ignore, for the whole library
+    assert client.post("/api/dictionary", json={"words": ["jpg"]}).json()["words"] == ["jpg"]
+    page = client.get(f"/api/documents/{doc_id}/pages/{pid}").json()
+    assert page["suspects"] == 1 and [x["word"] for x in page["lines"][1]["suspects"]] == ["cight"]
+    # Word export
+    r = client.get(f"/api/documents/{doc_id}/export/docx")
+    assert r.status_code == 200 and r.headers["content-type"].startswith(
+        "application/vnd.openxmlformats"
+    )
+    import io
+
+    from docx import Document
+
+    doc = Document(io.BytesIO(r.content))
+    texts = [p.text for p in doc.paragraphs]
+    assert "Chapter of a.jpg" in texts  # a heading: its own paragraph
+    assert any(
+        "First line of a page, cight penguins. Second line" in t for t in texts
+    )  # body lines joined
 
 
 def test_correction_while_reading_takes_turns(client, library):

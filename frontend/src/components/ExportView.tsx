@@ -31,6 +31,11 @@ const DOWNLOADS: { kind: ExportKind; label: string; note: string }[] = [
     label: 'Page report (.csv)',
     note: 'One row per page: read quality, blur, rotation, printed page number.',
   },
+  {
+    kind: 'docx',
+    label: 'Word (.docx)',
+    note: 'Headings, paragraphs and a page break between pages; notes on pages that read poorly.',
+  },
 ];
 
 export default function ExportView({ doc }: { doc: Document }) {
@@ -85,12 +90,6 @@ export default function ExportView({ doc }: { doc: Document }) {
             <span className="text-sm text-slate-600">{d.note}</span>
           </li>
         ))}
-        <li className="flex items-center gap-3 rounded-xl bg-white p-3 opacity-60 shadow-sm">
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2.5 py-1.5 text-sm font-medium">
-            <Download className="h-4 w-4" aria-hidden="true" /> Word (.docx)
-          </span>
-          <span className="text-sm text-slate-600">Coming in a later step.</span>
-        </li>
       </ul>
       <p className="text-xs text-slate-500">
         Every export uses your corrections. Read quality is the engine’s own certainty, never a

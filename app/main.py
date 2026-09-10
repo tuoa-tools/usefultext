@@ -35,9 +35,11 @@ from app.library import (
     unique_path,
 )
 from app.paths import data_dir, default_library_dir
+from app.spell import document_suspects
 from app.worker import Worker
 from usefultext import Settings, __version__
 from usefultext.corrections import Corrections
+from usefultext.docx_export import build_docx
 from usefultext.preprocess import heif_error, register_heif
 
 COOKIE = "usefultext_token"
@@ -237,6 +239,7 @@ def _page_view(
     record,
     corrections: Corrections,
     settings: Settings,
+    suspects: dict | None = None,
 ) -> dict:
     blurry = (entry.sharpness < settings.blur_threshold) if entry.sharpness is not None else None
     view = {
@@ -269,6 +272,7 @@ def _page_view(
             "n_lines": len(record.lines),
             "corrected": corrections.count(record),
             "stale": len(corrections.stale(record)),
+            "suspects": sum(len(v) for v in (suspects or {}).values()),
             "elapsed": record.elapsed,
             "preview": {
                 "url": f"/api/documents/{job.id}/previews/{entry.id}.jpg",
@@ -285,6 +289,7 @@ def _document_view(request: Request, lib: Library, job: Job) -> dict:
     settings = _settings(request, job)
     corrections = Corrections.load(job.folder)
     records = lib.records(job)
+    suspects = document_suspects(lib, job, records, corrections)
     pages, position = [], 0
     for entry in job.pages:
         if not entry.excluded:
@@ -297,6 +302,7 @@ def _document_view(request: Request, lib: Library, job: Job) -> dict:
                 records.get(entry.id),
                 corrections,
                 settings,
+                suspects.get(entry.id),
             )
         )
     return {
@@ -580,8 +586,9 @@ async def pause_document(doc_id: str, request: Request) -> dict:
 # --------------------------------------------------------------------------- #
 # A page: the editor's view and corrections
 # --------------------------------------------------------------------------- #
-def _line_views(record, corrections: Corrections) -> list[dict]:
+def _line_views(record, corrections: Corrections, suspects: dict | None = None) -> list[dict]:
     live = corrections.live(record)
+    suspects = suspects or {}
     return [
         {
             "index": i,
@@ -593,6 +600,7 @@ def _line_views(record, corrections: Corrections) -> list[dict]:
             "corrected": live[i].text if i in live else None,
             "corrected_at": live[i].at if i in live else None,
             "origin": "human" if i in live else "ocr",
+            "suspects": [s.to_dict() for s in suspects.get(i, [])],
         }
         for i, ln in enumerate(record.lines)
     ]
@@ -600,13 +608,16 @@ def _line_views(record, corrections: Corrections) -> list[dict]:
 
 def _page_detail(lib: Library, job: Job, entry: PageEntry, settings: Settings) -> dict:
     corrections = Corrections.load(job.folder)
-    record = lib.records(job).get(entry.id)
+    records = lib.records(job)
+    record = records.get(entry.id)
     position = next((i for i, e in enumerate(job.included(), 1) if e.id == entry.id), None)
-    view = _page_view(job, entry, position, record, corrections, settings)
-    view["lines"], view["regions"], view["stale"], view["suspects"] = [], [], [], []
+    suspects = document_suspects(lib, job, records, corrections).get(entry.id, {})
+    view = _page_view(job, entry, position, record, corrections, settings, suspects)
+    view["lines"], view["regions"], view["stale"] = [], [], []
+    view["suspects"] = sum(len(v) for v in suspects.values())
     if record is not None and record.status == "done":
         view["width"], view["height"] = record.width, record.height
-        view["lines"] = _line_views(record, corrections)
+        view["lines"] = _line_views(record, corrections, suspects)
         view["regions"] = [
             {
                 "text": r["text"],
@@ -648,7 +659,8 @@ def _edit_line(
             corrections.set(entry.id, index, text, record.lines[index].get("text", ""))
         corrections.save(job.folder)
         lib.refresh(job, settings, lock)
-        return _line_views(record, corrections)[index]
+        suspects = document_suspects(lib, job, lib.records(job), corrections).get(entry.id, {})
+        return _line_views(record, corrections, suspects)[index]
 
 
 @app.put("/api/documents/{doc_id}/pages/{page_id}/lines/{index}")
@@ -715,6 +727,13 @@ def _plain_text(lib: Library, job: Job, settings: Settings) -> str:
     return "\n\n".join(parts) + ("\n" if parts else "")
 
 
+def _docx(lib: Library, job: Job, settings: Settings) -> bytes:
+    records = lib.records(job)
+    recs = [records[e.id] for e in job.included() if records.get(e.id) is not None]
+    recs.sort(key=lambda r: r.page)
+    return build_docx(job.title, recs, len(job.included()), settings, Corrections.load(job.folder))
+
+
 def _pages_zip(job: Job) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -728,7 +747,13 @@ async def export(doc_id: str, kind: str, request: Request, plain: bool = False) 
     lib, job = _job(request, doc_id)
     stem = safe_name(job.title, "document")
     if kind == "docx":
-        raise HTTPException(501, "Word export arrives in a later step")
+        data = await asyncio.to_thread(_docx, lib, job, _settings(request, job))
+        headers = {"Content-Disposition": f'attachment; filename="{stem}.docx"'}
+        return Response(
+            data,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers=headers,
+        )
     if kind == "txt" and plain:
         text = await asyncio.to_thread(_plain_text, lib, job, _settings(request, job))
         return Response(text, media_type="text/plain; charset=utf-8")
@@ -758,6 +783,14 @@ async def get_dictionary(request: Request) -> dict:
 @app.put("/api/dictionary")
 async def set_dictionary(req: DictionaryUpdate, request: Request) -> dict:
     return {"words": await asyncio.to_thread(_lib(request).set_dictionary, req.words)}
+
+
+@app.post("/api/dictionary")
+async def add_to_dictionary(req: DictionaryUpdate, request: Request) -> dict:
+    """ "Ignore" in the editor: these words are fine, in every document of this library."""
+    lib = _lib(request)
+    current = await asyncio.to_thread(lib.dictionary)
+    return {"words": await asyncio.to_thread(lib.set_dictionary, current + req.words)}
 
 
 # The desktop app serves the built UI from here (step 3). In dev the

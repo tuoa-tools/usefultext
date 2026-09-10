@@ -80,6 +80,21 @@ line still reads the same; otherwise it is reported as stale. A correction
 may contain newlines (to add a line the OCR missed); an empty one drops the
 line. The app (Milestone 2) is the editor for this file.
 
+The app also flags **suspect words**: words its English list does not know,
+checked on the text as shown (corrections applied, headers and footers left
+out). A suspect is an OCR misread ("cight", "me1ting"), a name, or a word the
+list lacks; the editor highlights them, cycles through them, and "ignore"
+adds a word to the library's `dictionary.txt` so it is never flagged again.
+Flags only, never corrections. The list is pyspellchecker's American English
+plus British and Australian spellings added in `usefultext/spellcheck.py`;
+a capitalised unknown word that recurs on three or more pages of a document
+is taken for a name. On the six sample pages it flags exactly the misreads.
+
+The Word export (`.docx`, python-docx) has headings, paragraphs joined at
+the layout's paragraph breaks, a page break between pages, quality notes in
+italics on pages that read poorly, and the provenance in the file's
+properties.
+
 At the end of a run the CLI prints warnings, also available to the app:
 pages that read poorly, look blurry or failed (`retake`); two pages that read
 as the same text, usually a repeat photo (`duplicate`); a printed page number

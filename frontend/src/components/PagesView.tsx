@@ -456,6 +456,7 @@ export function PageChips({ page }: { page: Page }) {
           {r.printed_page !== null && <Chip tone="grey">printed p. {r.printed_page}</Chip>}
           {r.corrected > 0 && <Chip tone="blue">{plural(r.corrected, 'line')} corrected</Chip>}
           {r.stale > 0 && <Chip tone="amber">{plural(r.stale, 'correction')} to check</Chip>}
+          {r.suspects > 0 && <Chip tone="amber">{plural(r.suspects, 'suspect word')}</Chip>}
         </>
       )}
     </div>

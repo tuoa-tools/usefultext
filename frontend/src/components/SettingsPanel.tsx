@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { getSettings, saveSettings, type AddMode, type AppSettings } from '../api';
+import {
+  getDictionary,
+  getSettings,
+  saveDictionary,
+  saveSettings,
+  type AddMode,
+  type AppSettings,
+} from '../api';
 import { compactInputClass } from '../lib/ui';
 import ErrorText from './ErrorText';
 
@@ -8,7 +15,60 @@ export default function SettingsPanel({ onSaved }: { onSaved?: () => void }) {
   const settings = useQuery({ queryKey: ['settings'], queryFn: getSettings });
   if (settings.isError) return <ErrorText error={settings.error} />;
   if (!settings.data) return <p className="text-slate-500">Loading…</p>;
-  return <SettingsForm initial={settings.data} onSaved={onSaved} />;
+  return (
+    <div className="space-y-6">
+      <SettingsForm initial={settings.data} onSaved={onSaved} />
+      <IgnoredWords />
+    </div>
+  );
+}
+
+/** The words a person has vouched for: never flagged as suspects, in any document here. */
+function IgnoredWords() {
+  const qc = useQueryClient();
+  const words = useQuery({ queryKey: ['dictionary'], queryFn: getDictionary });
+  const save = useMutation({
+    mutationFn: saveDictionary,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['dictionary'] });
+      qc.invalidateQueries({ queryKey: ['document'] });
+      qc.invalidateQueries({ queryKey: ['page'] });
+    },
+  });
+  const list = words.data?.words ?? [];
+  return (
+    <section>
+      <h3 className="text-sm font-medium">Ignored words</h3>
+      <p className="text-xs text-slate-500">
+        Names and words the spelling check should never flag. Add them with “Ignore” in the editor;
+        remove one here.
+      </p>
+      {list.length === 0 ? (
+        <p className="mt-1 text-sm text-slate-500">None yet.</p>
+      ) : (
+        <ul className="mt-2 flex flex-wrap gap-1.5">
+          {list.map((w) => (
+            <li
+              key={w}
+              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-sm"
+            >
+              {w}
+              <button
+                type="button"
+                aria-label={`Stop ignoring ${w}`}
+                title="Stop ignoring"
+                className="text-slate-500 hover:text-red-700"
+                onClick={() => save.mutate(list.filter((x) => x !== w))}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <ErrorText error={save.error} />
+    </section>
+  );
 }
 
 function SettingsForm({ initial, onSaved }: { initial: AppSettings; onSaved?: () => void }) {

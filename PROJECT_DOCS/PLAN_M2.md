@@ -420,19 +420,58 @@ printout and otherwise behaves as before.
       text a person types, and only with "Check Spelling While Typing" on.
       Step 4's app-side pass is the real answer (suspect counts, cycling).
 
-### Step 4 — spellcheck and docx (1 day)
+### Step 4 — spellcheck and docx (1 day) — done 2026-09-10
 
-- [ ] `usefultext/spellcheck.py` on `pyspellchecker` (bundled English
-      frequency list, pure Python, offline): per line, unknown words with
-      character offsets; skips tokens with digits, single letters and words
-      in `<library>/dictionary.txt`. Per-page counts cached against the
-      `state.json` and dictionary mtimes. Flags only. Check British
-      spellings are not flagged before shipping.
-- [ ] `/api/dictionary` and "ignore" in the editor.
-- [ ] `.docx` export with `python-docx`: headings → Heading 2, paragraphs,
-      a page break between pages, provenance in the core properties.
-- Done when: page 7's misreads show as suspects and one "ignore" survives
-  a restart.
+- [x] `usefultext/spellcheck.py` on `pyspellchecker` (English list loads in
+      0.35 s; 89 lines check in 2 ms). Its list is American, so British and
+      Australian spellings are added: explicit lists for -our, -re, -ence,
+      -ogue, ae/oe and the one-offs (grey, programme, tyre, kerb, cheque,
+      jewellery…) and rules over the dictionary for -ise/-isation, -yse and
+      doubled l (travelled). Tokens: numbers and digit-led tokens skipped,
+      letters with a digit inside ("me1ting") always flagged (the plan said
+      skip; misreads put digits into words), possessives stripped, hyphens
+      split, short all-caps unknowns taken for acronyms. A capitalised
+      unknown on ≥ 3 pages of a document is a name, not a suspect.
+      On the six sample pages: only the misreads ("cogedser", "eac",
+      "cight"), nothing else.
+- [x] `app/spell.py`: suspects per page and line on the text as shown
+      (corrections applied, furniture out), cached against state.json,
+      corrections.json and dictionary.txt; `read.suspects` per page,
+      `lines[].suspects` with offsets in the page view; `POST /api/dictionary`
+      appends ("ignore"); the ignore list survives restarts (it is a file).
+- [x] Editor: suspects highlighted through the sizing copy behind each
+      textarea, "ignore" under the line, previous/next suspect cycling that
+      continues onto the next page with suspects, suspect count in the
+      page picker and chips; Settings lists the ignored words with remove.
+- [x] `usefultext/docx_export.py` (python-docx): Title, italic provenance,
+      Heading 2 for headings, body lines joined into paragraphs at the
+      layout's breaks, page break between pages, quality notes in italics,
+      core properties; `GET /export/docx`; the Export view's Word button.
+- [x] Also from Adam's PDF test the same day: the editor's left column is
+      pinned while scrolling and shows a magnified strip of the selected
+      line's own patch of the photo (its width, a line of context either
+      side, at most ~3× the page fit), with the full page below; arrow keys
+      at a line's top or bottom move to the neighbouring line.
+- Done when: met — 58 backend tests, 11 frontend tests.
+
+### Step 4½ — two-column pages (found 2026-09-10, not yet scheduled)
+
+Adam's magazine PDF (two columns) reads with the columns interleaved: the
+line grouper joins regions that share a vertical band across the gutter,
+so "Corporate boards sit at roughly 35% female in Australia — deemed out"
+runs straight into the other column. The brief set single-column for v1;
+the region boxes make a split feasible: find a vertical gap in the middle
+of the page that no kept region crosses (over most of the page's height),
+lay out each side separately, read left column then right. Estimate ½–1
+day with a two-column fixture; a `columns: auto|1` setting; the eval
+harness must stay at 0.67% on the single-column samples.
+
+Related, parked until the columns are sorted (Adam, 2026-09-10): on that
+PDF the magnified strip cannot make the text readable, because an
+interleaved "line" spans the whole page width and the strip shows it at
+page-fit scale. Column-width lines should fix the common case (about 2×);
+for edge cases — tiny print, a wide line on a dense page — consider a
+manual zoom on the strip (a slider or +/− that overrides the fit).
 
 ### Step 5 — window and shutdown (½–1 day)
 

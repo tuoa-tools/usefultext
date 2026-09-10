@@ -36,6 +36,7 @@ function page(
       n_lines: 3,
       corrected: 0,
       stale: 0,
+      suspects: 0,
       elapsed: 1,
       preview: null,
       ...read,
@@ -57,14 +58,17 @@ describe('page helpers', () => {
       page('c', { excluded: true }, { blurry: true }),
       page('d', {}, { stale: 1 }),
       page('e'),
+      page('f', {}, { suspects: 2 }),
     ];
-    expect(pages.map(needsAttention)).toEqual([true, false, true, true, false]);
+    expect(pages.map(needsAttention)).toEqual([true, false, true, true, false, true]);
     expect(nextNeedingAttention(pages, null, 1)?.id).toBe('a');
     expect(nextNeedingAttention(pages, 'a', 1)?.id).toBe('d');
-    expect(nextNeedingAttention(pages, 'd', 1)?.id).toBe('a');
-    expect(nextNeedingAttention(pages, 'a', -1)?.id).toBe('d');
+    expect(nextNeedingAttention(pages, 'd', 1)?.id).toBe('f');
+    expect(nextNeedingAttention(pages, 'f', 1)?.id).toBe('a');
+    expect(nextNeedingAttention(pages, 'a', -1)?.id).toBe('f');
     expect(nextNeedingAttention([page('x')], null, 1)).toBeNull();
     expect(neighbourPage(pages, 'b', 1)?.id).toBe('d');
+    expect(neighbourPage(pages, 'f', 1)).toBeNull();
     expect(neighbourPage(pages, 'a', -1)).toBeNull();
   });
   it('boxes a line from its regions', () => {
@@ -82,6 +86,7 @@ describe('page helpers', () => {
       corrected: null,
       corrected_at: null,
       origin: 'ocr' as const,
+      suspects: [],
     };
     expect(lineBox(line, regions)).toEqual([10, 5, 90, 25]);
     expect(lineBox({ ...line, regions: [] }, regions)).toBeNull();

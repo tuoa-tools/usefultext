@@ -110,6 +110,8 @@ export interface PageRead {
   n_lines: number;
   corrected: number;
   stale: number;
+  /** Words the dictionary does not know, on the text as shown. Flags only. */
+  suspects: number;
   elapsed: number;
   preview: Preview | null;
 }
@@ -145,6 +147,13 @@ export interface Document extends DocumentSummary {
   stray_files: string[];
 }
 
+export interface Suspect {
+  word: string;
+  /** Character offsets into the line's shown text (the correction if there is one). */
+  start: number;
+  end: number;
+}
+
 export interface Line {
   index: number;
   /** What the OCR read; never changed. */
@@ -157,6 +166,7 @@ export interface Line {
   corrected: string | null;
   corrected_at: string | null;
   origin: 'ocr' | 'human';
+  suspects: Suspect[];
 }
 
 export interface Region {
@@ -180,7 +190,8 @@ export interface PageDetail extends Page {
   lines: Line[];
   regions: Region[];
   stale: StaleCorrection[];
-  suspects: unknown[];
+  /** How many suspect words the page has in all. */
+  suspects: number;
 }
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
@@ -312,3 +323,6 @@ export const getPlainText = (id: string) =>
 export const getDictionary = () => request<{ words: string[] }>('GET', '/api/dictionary');
 export const saveDictionary = (words: string[]) =>
   request<{ words: string[] }>('PUT', '/api/dictionary', { words });
+/** "Ignore": these words are fine, in every document of this library. */
+export const addToDictionary = (words: string[]) =>
+  request<{ words: string[] }>('POST', '/api/dictionary', { words });

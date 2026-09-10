@@ -17,7 +17,7 @@ export function includedPages(pages: readonly Page[]): Page[] {
 export function needsAttention(page: Page): boolean {
   const r = page.read;
   if (!r) return false;
-  return r.status === 'error' || r.low_conf || r.blurry || r.stale > 0;
+  return r.status === 'error' || r.low_conf || r.blurry || r.stale > 0 || r.suspects > 0;
 }
 
 /** The next (or previous) included page needing attention after `fromId`, wrapping round. */
