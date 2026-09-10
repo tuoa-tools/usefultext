@@ -370,24 +370,45 @@ printout and otherwise behaves as before.
 - Done when: met, above. The `usefultext-app` console script launches the
   desktop mode (free port, token, browser) once a UI exists to show.
 
-### Step 3 — UI (4–6 days)
+### Step 3 — UI (4–6 days) — built 2026-09-10, awaiting Adam's click-through
 
-- [ ] `frontend/` seeded from media_downloader (Vite, React, TS, Tailwind,
-      TanStack Query, eslint/prettier/vitest, `api.ts` typed against §2);
-      dev proxy to :8000; `npm run build` → `app/static/`; CI frontend job.
-- [ ] Library view; first-run library picker; Settings and Help dialogs.
-- [ ] Pages view: drop zone, add-from-folder, thumbnails, drag reorder,
-      sort menu, exclude/replace, blur chips, warnings panel, the
-      Start/Pause/Resume button, "Read again" with its confirmation, and
-      progress with ETA and quality chips.
-- [ ] Editor: preview + SVG boxes, line list, click sync, flagged and
-      suspect cycling, autosave, revert, origin marker, keyboard nav.
-- [ ] Export view: copy-all, downloads, Open folder. Quit in desktop mode.
-- [ ] vitest for the pure helpers (line/box mapping, ETA, page-list
-      reorder); one render test per view as media_downloader does.
-- Done when: a friend-test on the Mac with the six photos plus a retake:
-  add, reorder by printed number, read, fix page 7's four misreads, export
-  `.md` — with no terminal open.
+- [x] `frontend/` seeded from media_downloader (Vite 8, React 19, TS,
+      Tailwind 4, TanStack Query 5, lucide icons, eslint/prettier/vitest);
+      `src/api.ts` typed against §2; dev proxy to :8000; `npm run build` →
+      `app/static/`; CI frontend job (lint, typecheck, test, build).
+- [x] `App.tsx`: hash routes (`#/`, `#/doc/<id>/<tab>[/<page>]`), header
+      with Settings and Help dialogs and Quit (desktop only), engine and
+      library notices, the first-run library picker pre-filled with
+      `Documents/UsefulText`.
+- [x] Library view: rows with status, "4 of 6 pages read", pages to look
+      at, corrected lines, date; New document; Open folder; Remove with a
+      confirmation naming the folder and the trash.
+- [x] Pages view: drop zone (and a folder-by-path form with "move instead
+      of copy"), thumbnails, drag reorder, sort by name / time / printed
+      page number (with the notes), leave out / include, replace with a
+      retake, remove, blur chips from the pre-check, read chips (quality,
+      blurry, rotated, printed page, corrected, corrections to check),
+      warnings panel, stray-photo notice with "Add them" (new
+      `POST /pages/adopt`), all disabled while reading.
+- [x] Document header: one Start / Pause / Resume button whose label
+      follows the state ("Try again" after an error), "Read again" with the
+      corrections warning, progress bar with page count, current photo,
+      ETA and the last page's flags; tabs Pages / Editor / Export.
+- [x] Editor: page picker with previous/next and previous/next page to
+      look at; preview with the lines' boxes drawn in page coordinates
+      through an SVG viewBox (so they scale with the image); click a box
+      or a line to highlight the other; one textarea per line with
+      browser spellcheck, autosave 500 ms after typing, "edited" marker
+      with the engine's text as its tooltip, Revert; header/footer lines
+      greyed; stale corrections listed.
+- [x] Export: copy all the text (bodies only, corrections applied),
+      downloads for Markdown, plain text, pages zip, JSONL, CSV; Word
+      greyed "coming in a later step"; Open folder.
+- [x] Tests: vitest for routes, formatting, page helpers and boxes; render
+      tests for the first-run screen and the library list. 8 tests.
+- [ ] The friend-test on the Mac: six photos plus a retake — add, reorder
+      by printed number, read, fix page 7's misreads, export `.md` — with
+      no terminal open. To be done by Adam; fixes follow from it.
 
 ### Step 4 — spellcheck and docx (1 day)
 

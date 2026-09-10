@@ -152,6 +152,10 @@ class PagesUpdate(BaseModel):
     pages: list[PageItem]
 
 
+class AdoptRequest(BaseModel):
+    files: list[str] = Field(min_length=1, max_length=1000)
+
+
 class SortRequest(BaseModel):
     by: Literal["name", "time", "printed"]
 
@@ -521,6 +525,20 @@ async def set_pages(doc_id: str, req: PagesUpdate, request: Request) -> dict:
     removed = await asyncio.to_thread(lib.set_pages, job, [p.model_dump() for p in req.pages])
     await asyncio.to_thread(lib.refresh, job, settings, _worker(request).lock(job.id))
     return {"removed": removed, **await asyncio.to_thread(_document_view, request, lib, job)}
+
+
+@app.post("/api/documents/{doc_id}/pages/adopt", status_code=201)
+async def adopt_files(doc_id: str, req: AdoptRequest, request: Request) -> dict:
+    """Photos already in the folder but not in the document become pages."""
+    lib, job = _job(request, doc_id)
+    _not_active(request, job)
+    settings = _settings(request, job)
+    added = await asyncio.to_thread(lib.adopt, job, req.files, settings)
+    await asyncio.to_thread(lib.refresh, job, settings, _worker(request).lock(job.id))
+    return {
+        "added": [e.id for e in added],
+        **await asyncio.to_thread(_document_view, request, lib, job),
+    }
 
 
 @app.post("/api/documents/{doc_id}/pages/sort")

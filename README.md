@@ -39,20 +39,33 @@ command to resume.
 measure of accuracy. A page with mean quality below 0.70, or with nothing
 readable, is flagged `low_conf` and its text is never shown without that flag.
 
-## The app (Milestone 2, in progress)
+## The app (Milestone 2)
 
 `app/` is a FastAPI server on localhost around the same pipeline: a library
 folder with one sub-folder per document (`job.json` page list, `photos/`,
 the outputs above), one worker thread reading documents in turn, pause and
-resume, per-line corrections and exports. Run it in development with
+resume, per-line corrections and exports. `frontend/` is the browser UI
+(React 19, TypeScript, Vite, Tailwind, TanStack Query — the media_downloader
+stack): the library, a document's pages with drag ordering and warnings,
+the side-by-side editor, exports.
+
+Development, two terminals:
 
 ```
-.venv/bin/uvicorn app.main:app --reload --port 8000     # API docs at http://127.0.0.1:8000/docs
-.venv/bin/usefultext-app                                # desktop mode: free port, launch token, opens the browser
+.venv/bin/uvicorn app.main:app --reload --port 8000     # the API; docs at http://127.0.0.1:8000/docs
+cd frontend && npm install && npm run dev               # the UI at http://localhost:5173 (proxies /api)
 ```
 
-The first request to `PUT /api/settings` chooses the library folder. The
-browser UI (`frontend/`) is step 3 of `PROJECT_DOCS/PLAN_M2.md`.
+The packaged layout — FastAPI serving the built UI from one port:
+
+```
+(cd frontend && npm run build)     # -> app/static/
+.venv/bin/usefultext-app           # desktop mode: free port, launch token, opens the browser
+```
+
+On first start the app asks where the library folder should be. Frontend
+checks: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`
+(CI runs them on every push).
 
 ## Corrections and warnings
 

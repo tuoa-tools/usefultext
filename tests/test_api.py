@@ -141,7 +141,11 @@ def test_create_add_and_list(client, library):
     folder = Path(view["folder"])
     assert folder.parent == library and (folder / "job.json").exists()
     listing = client.get("/api/library").json()["documents"]
-    assert listing[0]["id"] == doc_id and listing[0]["pages"] == 2 and listing[0]["status"] == "new"
+    assert (
+        listing[0]["id"] == doc_id
+        and listing[0]["total_pages"] == 2
+        and listing[0]["status"] == "new"
+    )
     bad = client.post(
         f"/api/documents/{doc_id}/files", files=[("files", ("x.txt", b"hi", "text/plain"))]
     )
@@ -188,8 +192,18 @@ def test_reorder_exclude_remove_and_sort(client, library):
         ("a.jpg", True, None),
     ]
     assert view["stray_files"] == ["photos/b.jpg"] and view["included"] == 1
+    back = client.post(f"/api/documents/{doc_id}/pages/adopt", json={"files": ["photos/b.jpg"]})
+    assert back.status_code == 201 and back.json()["stray_files"] == []
+    assert [p["label"] for p in back.json()["pages"]] == ["c.jpg", "a.jpg", "b.jpg"]
+    assert back.json()["pages"][2]["sharpness"] is not None
+    assert (
+        client.post(
+            f"/api/documents/{doc_id}/pages/adopt", json={"files": ["photos/b.jpg"]}
+        ).status_code
+        == 422
+    )
     r = client.post(f"/api/documents/{doc_id}/pages/sort", json={"by": "name"})
-    assert [p["label"] for p in r.json()["pages"]] == ["c.jpg", "a.jpg"]  # excluded stay last
+    assert [p["label"] for p in r.json()["pages"]] == ["b.jpg", "c.jpg", "a.jpg"]  # excluded last
     assert (
         client.put(f"/api/documents/{doc_id}/pages", json={"pages": [{"id": "nope"}]}).status_code
         == 422

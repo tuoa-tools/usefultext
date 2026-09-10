@@ -342,6 +342,27 @@ class Library:
         job.save()
         return notes
 
+    def adopt(self, job: Job, files: list[str], settings: Settings) -> list[PageEntry]:
+        """Make pages of photos already in the folder (stray files): no copy,
+        just entries at the end of the list."""
+        strays = set(self.stray_files(job))
+        new: list[PageEntry] = []
+        for rel in files:
+            if rel not in strays:
+                raise LibraryError(f"{rel} is not a photo waiting in this document's folder")
+            dest = job.folder / rel
+            n = pdf_page_count(dest) if dest.suffix.lower() in SUPPORTED_PDF_EXTS else 1
+            for i in range(n):
+                new.append(
+                    PageEntry(id=new_id("p"), file=rel, page_index=i, n_pages=n, added_at=now())
+                )
+        scores = sharpness_precheck([e.source(job.folder) for e in new], settings)
+        for e in new:
+            e.sharpness = scores.get(e.source(job.folder).key)
+        job.pages.extend(new)
+        job.save()
+        return new
+
     def stray_files(self, job: Job) -> list[str]:
         """Photos in the folder that are not part of the document."""
         photos = job.folder / PHOTOS_DIR
@@ -387,7 +408,7 @@ class Library:
         recs = [state.pages.get(job.key_of(e)) for e in included]
         done = [r for r in recs if r is not None and r.status == "done"]
         job.summary = {
-            "pages": len(job.pages),
+            "total_pages": len(job.pages),  # "pages" is the list in the document view
             "included": len(included),
             "read": len(done),
             "errors": sum(1 for r in recs if r is not None and r.status == "error"),
