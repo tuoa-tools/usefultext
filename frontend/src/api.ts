@@ -18,6 +18,8 @@ export interface Health {
   heif: boolean;
   heif_error: string | null;
   quit_requested: boolean;
+  /** Documents queued or being read right now. */
+  reading: number;
 }
 
 export type AddMode = 'copy' | 'move';

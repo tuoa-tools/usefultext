@@ -75,7 +75,8 @@ def test_health_is_the_keep_alive_and_quit_calls_the_launcher(tmp_path, monkeypa
         with TestClient(main_module.app) as c:
             state = main_module.app.state
             state.last_ping = time.monotonic() - 500
-            assert c.get("/api/health").json()["desktop"] is True
+            h = c.get("/api/health").json()
+            assert h["desktop"] is True and h["reading"] == 0  # Quit need not ask
             assert time.monotonic() - state.last_ping < 5  # the ping was recorded
             c.get("/launch", params={"token": "secret"}, follow_redirects=False)
             assert c.post("/api/quit").json() == {"ok": True}

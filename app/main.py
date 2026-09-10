@@ -405,6 +405,8 @@ async def health(request: Request) -> dict:
         "heif": register_heif(),
         "heif_error": heif_error(),
         "quit_requested": bool(getattr(state, "quit_requested", False)),
+        # Documents queued or being read: Quit asks first only when this is not zero.
+        "reading": len(getattr(getattr(state, "worker", None), "progress", {}) or {}),
     }
 
 

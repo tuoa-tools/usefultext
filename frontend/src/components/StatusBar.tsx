@@ -51,12 +51,20 @@ export function QuitButton() {
   const health = useQuery({ queryKey: ['health'], queryFn: getHealth });
   const quit = useMutation({ mutationFn: quitApp });
   if (!health.data?.desktop) return null;
+  const reading = health.data.reading ?? 0;
   return (
     <button
       type="button"
       onClick={() => {
-        if (window.confirm('Quit UsefulText? Reading in progress will pause; resume it next time.'))
-          quit.mutate();
+        // Only worth asking when something is being read; it pauses and resumes next time.
+        if (
+          reading > 0 &&
+          !window.confirm(
+            'A document is being read. Quit anyway? It pauses now and resumes next time.'
+          )
+        )
+          return;
+        quit.mutate();
       }}
       className={ghostButton}
     >

@@ -14,6 +14,7 @@ const health = {
   heif: true,
   heif_error: null,
   quit_requested: false,
+  reading: 0,
 };
 const settings = {
   library_dir: null,
