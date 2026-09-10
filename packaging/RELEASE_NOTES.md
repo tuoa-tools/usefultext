@@ -22,3 +22,5 @@ read becomes a folder there with its photos, its text and your corrections. Sett
 the log (`app.log`) are in your user's app-data folder.
 
 **What's in this release**
+
+v0.3.1: on Windows the app opens in your browser (the app's own window misbehaved on a real Windows 11 machine and is opt-in there for now); the first-run screen shows an error instead of "Loading…" when something is wrong; the window hands the page its launch token directly.
