@@ -15,7 +15,7 @@ from .inputs import PageSource, discover_sources, order_files
 from .pipeline import JobSummary, process_page, run_job, sharpness_precheck
 from .settings import Settings
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "Settings",

@@ -8,12 +8,30 @@ and export. OCR is RapidOCR on ONNX Runtime (CPU); the models ship inside the
 "Useful" family of tools, alongside
 [media_downloader](https://github.com/adam-tuoa/media_downloader).
 
-**Status:** version 0.2.0. Milestone 1 (the command line) and Milestone 2 (the
-app) are complete; Milestone 3 — installers for Mac, Windows and Linux for a
-machine without Python — is next. `PROJECT_DOCS/BRIEF.md` is the
-specification, `PROJECT_DOCS/PLAN_M2.md` the record of how the app was built.
+**Status:** version 0.3.0. Milestones 1 (the command line) and 2 (the app)
+are complete; Milestone 3 packages the app for a machine without Python.
+`PROJECT_DOCS/BRIEF.md` is the specification, `PROJECT_DOCS/PLAN_M2.md` the
+record of how the app was built, `PROJECT_DOCS/PLAN_M3.md` the packaging.
 
-## Install and run
+## Install
+
+Download from the [releases page](https://github.com/tuoa-tools/usefultext/releases):
+
+- **macOS**: the zip for your Mac (`macos-arm64` for Apple Silicon,
+  `macos-x64` for Intel); unzip and drag UsefulText to Applications. The app
+  is not signed with an Apple developer certificate, so the first time macOS
+  says it "cannot be opened because the developer cannot be verified":
+  right-click the app, choose Open, then Open again. After that it opens
+  normally.
+- **Windows**: `UsefulText-windows-x64-setup.exe`, a per-user install with no
+  administrator needed. SmartScreen may want "More info → Run anyway" once.
+- **Linux**: unpack the tarball and run `UsefulText/UsefulText`. With
+  WebKitGTK and PyGObject installed it opens in its own window; otherwise in
+  your browser.
+
+The engine and its models are inside; nothing is downloaded or uploaded.
+
+## Run from source
 
 ```
 python3.13 -m venv .venv && .venv/bin/pip install -e .
@@ -228,6 +246,15 @@ Other tools: `tools/make_fixtures.py` (HEIC / PDF / EXIF / upside-down
 fixtures from `Documents/`), `tools/eval_models.py` (CER/WER of OCR
 configurations against `fixtures/reference/`), `tools/api_smoke.sh` (the
 app end to end: add, read, kill -9, resume, export).
+
+Packaging (`PROJECT_DOCS/PLAN_M3.md`): `pip install -e ".[build]"`, build the
+UI, `python scripts/prepare_bundle.py` (copies the three OCR models out of
+the rapidocr wheel — the app ships 32 MB of models, not the wheel's 260),
+then `pyinstaller --noconfirm --clean packaging/UsefulText.spec` for
+macOS/Linux or `python scripts/build_windows.py` plus Inno Setup on Windows;
+`python scripts/smoke_bundle.py <executable>` reads real pages through a
+built app's API. `.github/workflows/release.yml` does all of it for a `v*`
+tag and publishes the artefacts.
 
 ```
 usefultext/          the pipeline: ocr, preprocess, inputs, pipeline, layout, furniture, checks,

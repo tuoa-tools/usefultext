@@ -1,6 +1,7 @@
 """Desktop mode: the launcher's helpers, the window's bridge, idle shutdown and quit."""
 
 import json
+import os
 import time
 from types import SimpleNamespace
 
@@ -94,3 +95,20 @@ def test_quit_is_refused_outside_desktop_mode(tmp_path, monkeypatch):
     with TestClient(main_module.app) as c:
         assert c.post("/api/quit").status_code == 400
         assert c.get("/api/health").json()["desktop"] is False
+
+
+def test_bundled_models_dir_only_when_the_models_are_there(tmp_path, monkeypatch):
+    monkeypatch.delenv("USEFULTEXT_MODEL_DIR", raising=False)
+    monkeypatch.setattr(launcher.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(launcher.sys, "_MEIPASS", str(tmp_path), raising=False)
+    assert launcher.bundled_models_dir() is None  # a bundle without models → the wheel's
+    launcher.point_at_bundled_models()
+    assert "USEFULTEXT_MODEL_DIR" not in os.environ
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "PP-OCRv6_det_small.onnx").write_bytes(b"x")
+    assert launcher.bundled_models_dir() == tmp_path / "models"
+    launcher.point_at_bundled_models()
+    assert os.environ["USEFULTEXT_MODEL_DIR"] == str(tmp_path / "models")
+    monkeypatch.setenv("USEFULTEXT_MODEL_DIR", "/chosen/by/hand")
+    launcher.point_at_bundled_models()  # a person's choice wins
+    assert os.environ["USEFULTEXT_MODEL_DIR"] == "/chosen/by/hand"

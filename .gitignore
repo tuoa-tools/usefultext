@@ -14,6 +14,7 @@ redaction_detection_poc/
 
 # Build and tooling artefacts.
 app/static/
+packaging/models/
 dist/
 build/
 *.egg-info/

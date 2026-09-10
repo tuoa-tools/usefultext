@@ -85,6 +85,30 @@ def launch_url(port: int, token: str) -> str:
     return f"http://127.0.0.1:{port}/launch?token={token}"
 
 
+def bundled_models_dir() -> Path | None:
+    """Where a packaged app keeps the OCR models: `models/` inside a PyInstaller
+    bundle, or beside the `app` package in the Windows layout (Lib/site-packages/models).
+    None in a development install, where the rapidocr wheel's own models are used."""
+    candidates = []
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        candidates.append(Path(sys._MEIPASS) / "models")
+    candidates.append(Path(__file__).resolve().parents[1] / "models")
+    for folder in candidates:
+        if (folder / "PP-OCRv6_det_small.onnx").exists():
+            return folder
+    return None
+
+
+def point_at_bundled_models() -> None:
+    """Packaged builds ship three models (scripts/prepare_bundle.py) rather than the
+    rapidocr wheel's 260 MB; tell the engine where they are unless the person did."""
+    if os.environ.get("USEFULTEXT_MODEL_DIR"):
+        return
+    folder = bundled_models_dir()
+    if folder is not None:
+        os.environ["USEFULTEXT_MODEL_DIR"] = str(folder)
+
+
 def wait_until_started(server, thread: threading.Thread, timeout: float = 30.0) -> bool:
     """True once uvicorn is accepting connections; False if it died or timed out."""
     deadline = time.monotonic() + timeout
@@ -113,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr = sys.stderr or open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
     folder = data_dir()
     setup_logging(folder)
+    point_at_bundled_models()
 
     existing = running_instance(folder)
     if existing:

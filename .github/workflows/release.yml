@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows-x64
+          - os: ubuntu-22.04 # older glibc = runs on more distros
+            name: linux-x64
+          - os: macos-15-intel # Adam's Mac is Intel
+            name: macos-x64
+          - os: macos-latest # Apple Silicon
+            name: macos-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Build the UI
+        working-directory: frontend
+        run: npm ci && npm run build
+
+      - name: Install the app and the build tools
+        run: pip install -e ".[build]"
+
+      - name: Gather the models and check the UI
+        run: python scripts/prepare_bundle.py
+
+      # Windows: no PyInstaller - Defender quarantines its exes. Embeddable Python + Inno Setup.
+      - name: Assemble the Windows app folder
+        if: runner.os == 'Windows'
+        run: python scripts/build_windows.py
+
+      - name: Smoke-test the Windows layout
+        if: runner.os == 'Windows'
+        run: python scripts/smoke_bundle.py --synthetic -- build/windows/python/python.exe -m app.launcher
+
+      - name: Build the Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:APP_VERSION = "${{ github.ref_name }}".TrimStart("v")
+          if (-not $env:APP_VERSION -or $env:APP_VERSION -eq "main") { $env:APP_VERSION = "0.0.0" }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\windows.iss
+
+      - name: Bundle with PyInstaller
+        if: runner.os != 'Windows'
+        run: pyinstaller --noconfirm --clean packaging/UsefulText.spec
+
+      - name: Smoke-test the bundle (macOS)
+        if: runner.os == 'macOS'
+        run: python scripts/smoke_bundle.py --synthetic -- dist/UsefulText.app/Contents/MacOS/UsefulText
+
+      - name: Smoke-test the bundle (Linux)
+        if: runner.os == 'Linux'
+        run: python scripts/smoke_bundle.py --synthetic -- dist/UsefulText/UsefulText
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --sequesterRsrc --keepParent dist/UsefulText.app UsefulText-${{ matrix.name }}.zip
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: tar -C dist -czf UsefulText-${{ matrix.name }}.tar.gz UsefulText
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UsefulText-${{ matrix.name }}
+          path: UsefulText-*.*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: UsefulText ${{ github.ref_name }}
+          files: artifacts/UsefulText-*
+          body_path: packaging/RELEASE_NOTES.md
+          generate_release_notes: true
