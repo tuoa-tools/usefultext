@@ -370,7 +370,7 @@ printout and otherwise behaves as before.
 - Done when: met, above. The `usefultext-app` console script launches the
   desktop mode (free port, token, browser) once a UI exists to show.
 
-### Step 3 — UI (4–6 days) — built 2026-09-10, awaiting Adam's click-through
+### Step 3 — UI (4–6 days) — done 2026-09-10 (commit 2ec272d)
 
 - [x] `frontend/` seeded from media_downloader (Vite 8, React 19, TS,
       Tailwind 4, TanStack Query 5, lucide icons, eslint/prettier/vitest);
@@ -406,9 +406,19 @@ printout and otherwise behaves as before.
       greyed "coming in a later step"; Open folder.
 - [x] Tests: vitest for routes, formatting, page helpers and boxes; render
       tests for the first-run screen and the library list. 8 tests.
-- [ ] The friend-test on the Mac: six photos plus a retake — add, reorder
-      by printed number, read, fix page 7's misreads, export `.md` — with
-      no terminal open. To be done by Adam; fixes follow from it.
+- [x] Adam's click-through on the Mac (Safari, desktop mode) found three
+      things, all fixed the same day: editor lines did not grow with their
+      text (now sized by a hidden copy of the text in the same grid cell,
+      no measuring); an error flashed on first run (the library view
+      rendered before the health check answered and got a 409 — the app
+      now waits, and 4xx answers are not retried); and naming first was
+      the wrong default — the library now opens with a drop zone that
+      makes a document from a folder or photos and names it after them.
+      Also: a dropped folder is walked, and "Choose a folder…" exists on
+      both drop zones, so the typed path is only for moving.
+- [ ] Browser-native spellcheck is not enough: Safari underlines only
+      text a person types, and only with "Check Spelling While Typing" on.
+      Step 4's app-side pass is the real answer (suspect counts, cycling).
 
 ### Step 4 — spellcheck and docx (1 day)
 
