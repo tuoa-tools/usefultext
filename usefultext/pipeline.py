@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 import time
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -382,6 +383,39 @@ class JobSummary:
 OnPage = Callable[[PageRecord, int, int, bool], None]
 
 
+def refresh_outputs(
+    out_dir: str | Path, sources: list[PageSource], settings: Settings, *, state=None, lock=None
+):
+    """Bring the output folder in line with `sources` without reading any
+    page: renumber the records by their position, re-detect running
+    headers/footers over the pages now included, save state.json and
+    rewrite every output file (with the person's corrections applied).
+
+    run_job calls this after every page; the app calls it after a reorder,
+    an exclusion or a correction. Records for pages no longer in `sources`
+    stay in state.json, so a page excluded and included again is not read
+    twice. `lock` serialises this with any other writer of the folder.
+    """
+    from .outputs import JobState, write_outputs
+
+    out = Path(out_dir)
+    with lock if lock is not None else nullcontext():
+        state = state or JobState.load(out)
+        records = []
+        for i, s in enumerate(sources, start=1):
+            rec = state.pages.get(s.key)
+            if rec is not None:
+                rec.page = i
+                records.append(rec)
+        detect_furniture(
+            records, band=settings.furniture_band, min_pages=settings.furniture_min_pages
+        )
+        state.save(out)
+        # corrections.json is a person's; it is read here, never written.
+        write_outputs(out, state, sources, settings, corrections=Corrections.load(out))
+    return state
+
+
 def run_job(
     sources: list[PageSource],
     out_dir: str | Path,
@@ -392,15 +426,18 @@ def run_job(
     force: bool = False,
     precheck: dict[str, float] | None = None,
     title: str | None = None,
+    finalize_lock=None,
 ) -> JobSummary:
     """Read every page in order, writing results as each one completes.
 
     Resumable: `state.json` in out_dir records every finished page; a re-run
     skips pages whose file is unchanged (use force=True to redo them).
     Pausable: should_stop() is polled before each page; a True stops pulling
-    from the queue and the outputs so far stay valid.
+    from the queue and the outputs so far stay valid. `finalize_lock` (a
+    threading lock) is held while the outputs are rewritten, so another
+    writer of the same folder (the app saving a correction) can take turns.
     """
-    from .outputs import JobState, write_outputs
+    from .outputs import JobState
 
     settings = settings or Settings()
     out = Path(out_dir)
@@ -415,14 +452,7 @@ def run_job(
     preview_dir = out.resolve() / PREVIEW_DIR if settings.previews else None
 
     def finalize():
-        detect_furniture(
-            [state.pages[s.key] for s in sources if s.key in state.pages],
-            band=settings.furniture_band,
-            min_pages=settings.furniture_min_pages,
-        )
-        state.save(out)
-        # corrections.json is a person's; it is read here, never written.
-        write_outputs(out, state, sources, settings, corrections=Corrections.load(out))
+        refresh_outputs(out, sources, settings, state=state, lock=finalize_lock)
 
     for i, src in enumerate(sources, start=1):
         if should_stop and should_stop():

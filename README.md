@@ -39,6 +39,21 @@ command to resume.
 measure of accuracy. A page with mean quality below 0.70, or with nothing
 readable, is flagged `low_conf` and its text is never shown without that flag.
 
+## The app (Milestone 2, in progress)
+
+`app/` is a FastAPI server on localhost around the same pipeline: a library
+folder with one sub-folder per document (`job.json` page list, `photos/`,
+the outputs above), one worker thread reading documents in turn, pause and
+resume, per-line corrections and exports. Run it in development with
+
+```
+.venv/bin/uvicorn app.main:app --reload --port 8000     # API docs at http://127.0.0.1:8000/docs
+.venv/bin/usefultext-app                                # desktop mode: free port, launch token, opens the browser
+```
+
+The first request to `PUT /api/settings` chooses the library folder. The
+browser UI (`frontend/`) is step 3 of `PROJECT_DOCS/PLAN_M2.md`.
+
 ## Corrections and warnings
 
 Text is never changed automatically. A person's corrections live in
@@ -139,6 +154,7 @@ summary = run_job(
 .venv/bin/python -m pytest -q
 .venv/bin/python tools/make_fixtures.py     # HEIC / PDF / EXIF / upside-down fixtures from Documents/
 .venv/bin/python tools/eval_models.py       # CER/WER of OCR configurations vs fixtures/reference/
+tools/api_smoke.sh Documents/                # the app end to end: add, read, kill -9, resume, export
 ```
 
 CI (`.github/workflows/ci.yml`) runs the same checks on Ubuntu, Windows and macOS (Apple Silicon).

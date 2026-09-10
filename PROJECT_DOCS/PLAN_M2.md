@@ -322,29 +322,53 @@ printout and otherwise behaves as before.
   previews, `document.txt` and four warnings (three blurry pages and the
   printed-number gap at 8); CER unchanged at 0.67%.
 
-### Step 2 — backend (2–3 days)
+### Step 2 — backend (2–3 days) — done 2026-09-10
 
-- [ ] `app/library.py`: scan `<library>/*/job.json`; create document; page
-      list read/write with validation (ids unique, files exist); add files
-      from an upload (write to `photos/`, de-duplicate names with ` (1)`)
-      or from a path (copy or move); replace; sort by name/time/printed;
-      thumbnails on demand with pillow-heif and pymupdf; trash (the
-      confirmation lives in the UI; the API call is the irreversible step).
-- [ ] `app/worker.py`: thread, queue, `Progress`, pause/resume/force,
-      engine warm-up, per-document lock shared with correction saves,
-      `summary` written into `job.json` after each page.
-- [ ] `app/main.py`: every route in §2; `Settings` overrides per document
-      merged over the app settings; exports streamed from the files on disk
-      (`pages.zip` built in memory); `docx` returns 501 until step 4.
-- [ ] Startup: `register_heif()`, settings load, first-run flag when no
-      library folder is set (`/api/health` says so; the UI shows the picker).
-- [ ] Tests (`tests/test_api.py`, httpx `TestClient`, `USEFULTEXT_DATA_DIR`
-      and a temp library): a fake `run_job` that writes a synthetic
-      `state.json` page by page and honours `should_stop`; add → order →
-      start → pause → resume → correct → export; relative keys survive a
-      library move; two clients saving corrections during a run.
-- Done when: the whole flow above runs from `curl` against the six sample
-  photos, and a kill -9 mid-job resumes cleanly.
+- [x] `app/config.py`: `AppConfig` in the app-data folder's `settings.json`
+      (library_dir, add_mode copy|move, pdf_dpi, min_page_conf, blur_threshold);
+      pipeline settings = calibrated defaults ← app choices ← the document's
+      own `settings` in job.json (`PUT /api/documents/{doc}`).
+- [x] `app/library.py`: `Job` (job.json: page list, settings, cached summary
+      counts, last_run) and `PageEntry` (id, file, page_index, excluded,
+      replaced_from, sharpness); `Library` scans `<library>/*/job.json`,
+      creates folders (`unique_path`, never overwriting), adds files from an
+      upload or a path (copy or move; PDFs expand; sharpness pre-check at add
+      time), replaces a page in place, validates `set_pages` (drops ids left
+      out; photos stay), sorts by name/time/printed (`furniture.printed_order`),
+      reports stray photos, makes thumbnails on demand (`<id>.thumb.jpg`,
+      EXIF-oriented, JPEG draft decode), trashes with `send2trash`, keeps the
+      spellcheck ignore list. Status is derived from disk (new / paused /
+      done / error), never stored, so a crash leaves a plain Resume.
+- [x] `app/worker.py`: one thread, FIFO of document ids, warms the engine
+      first (`/api/health` → engine loading|ready|failed), per-document
+      `RLock` shared with correction saves and passed to `run_job` as
+      `finalize_lock`, `Progress` (done/total, current label, ETA from the
+      mean page time, last page's flags), pause = stop event, no cancel.
+- [x] `app/main.py`: every route in §2 plus `PUT /api/documents/{doc}`
+      (title, settings) and `export/txt?plain=true` (copy-all: bodies only).
+      Uploads spool into `photos/.incoming-*` then go through the same
+      add path as files named by path. Page-list edits are refused (409)
+      while a document is queued or running; corrections are not. `docx`
+      answers 501 until step 4; `suspects` is `[]` until step 4.
+- [x] Pipeline: `refresh_outputs()` (renumber by position, re-detect
+      furniture over the pages now included, save, rewrite) used per page
+      by `run_job` and by the app after a reorder, exclusion or correction;
+      records of excluded pages stay in state.json so re-including one
+      does not read it again.
+- [x] Tests: `tests/test_api.py` (12) drive the whole flow through
+      `TestClient` with `pipeline.process_page` faked behind a semaphore
+      gate — first run, add/dedupe/reject, add-path copy and move, reorder/
+      exclude/remove/sort, start → pause → resume with relative keys and
+      outputs, corrections in every export, a correction saved while a read
+      is in progress, replace with a retake, the library moved between
+      runs (nothing re-read), force re-read re-attaching a correction,
+      thumbnails, dictionary, trash, the launch-token guard. 52 tests in all.
+- [x] `tools/api_smoke.sh <photos folder>`: the real thing — add a folder,
+      read, kill -9 the server mid-read, restart, resume, sort by printed
+      number, correct a line, export. On the six sample photos: resumed 2,
+      processed 4, no errors, three blurry warnings and the gap at 8.
+- Done when: met, above. The `usefultext-app` console script launches the
+  desktop mode (free port, token, browser) once a UI exists to show.
 
 ### Step 3 — UI (4–6 days)
 
