@@ -9,6 +9,8 @@ Nothing here talks to the network; RapidOCR fetches its models once on first
 use and runs from the local copy thereafter.
 """
 
+from .checks import JobWarning, job_warnings
+from .corrections import Corrections
 from .inputs import PageSource, discover_sources, order_files
 from .pipeline import JobSummary, process_page, run_job, sharpness_precheck
 from .settings import Settings
@@ -24,5 +26,8 @@ __all__ = [
     "process_page",
     "sharpness_precheck",
     "JobSummary",
+    "Corrections",
+    "JobWarning",
+    "job_warnings",
     "__version__",
 ]

@@ -117,7 +117,18 @@ def main() -> int:
     original_load = pipeline.load_source
     settings = Settings()
     rows = []
-    for name in [c.strip() for c in args.configs.split(",") if c.strip()]:
+    for wanted in [c.strip() for c in args.configs.split(",") if c.strip()]:
+        # Exact name, else a unique prefix, else the name minus its parenthetical
+        # ("default" → "default (v6 small)", not "default + unsharp").
+        matches = [k for k in CONFIGS if k == wanted] or [
+            k for k in CONFIGS if k.startswith(wanted)
+        ]
+        if len(matches) > 1:
+            matches = [k for k in matches if k[len(wanted) :].startswith(" (")]
+        if len(matches) != 1:
+            print(f"--configs {wanted!r}: expected one of {', '.join(CONFIGS)}", file=sys.stderr)
+            return 2
+        name = matches[0]
         params = CONFIGS[name]
         pipeline.load_source = original_load
         if params.get("_unsharp"):

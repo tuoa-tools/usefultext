@@ -22,11 +22,14 @@ python3.13 -m venv .venv && .venv/bin/pip install -e .
 
 | File | Contents |
 |---|---|
-| `pages/page_NNN.txt` | plain text per page in reading order; low-quality or blurry pages carry a bracketed note on the first line |
+| `pages/page_NNN_<photo>.txt` | plain text per page in reading order, named by position then photo; the first line is a bracketed provenance note (`[page 3 of 12 · IMG_0042.jpg · read quality 0.98 · rotated 90°]`), followed by any quality notes, a blank line, then the text |
 | `document.md` | all pages with `## Page N` markers, best-effort `##` headings, paragraph breaks, and a `> ⚠` note on pages that read poorly |
-| `document.jsonl` | one line per text region: `page, printed_page, source, line, order, role (body/header/footer), text, conf, bbox, clipped, low_conf_page` (bbox in full-resolution pixels of the upright page) |
-| `report.csv` | per page: `filename, printed_page, regions, mean_conf, low_conf, sharpness, blurry, rotation, dropped_regions, clipped_regions, furniture_lines, elapsed_s, status, error` |
+| `document.txt` | all pages as plain text with `--- page N (photo) ---` separators |
+| `document.jsonl` | one line per text region: `page, page_id, printed_page, source, line, order, role (body/header/footer), text, conf, bbox, clipped, low_conf_page, corrected, corrected_line` (bbox in full-resolution pixels of the upright page; `text` is always the raw OCR) |
+| `report.csv` | per page: `id, filename, printed_page, regions, mean_conf, low_conf, sharpness, blurry, rotation, dropped_regions, clipped_regions, furniture_lines, corrected_lines, elapsed_s, status, error, preview` |
+| `previews/<id>.jpg` | an upright JPEG of each page (1600 px long edge), rotated as the read decided — what the app's editor shows; `--no-previews` skips them |
 | `state.json` | job state; a re-run skips pages already read (use `--force` to redo) |
+| `corrections.json` | a person's edits (see below); never written by the pipeline |
 
 Every file is rewritten after each page, so an interrupted run leaves a
 complete, consistent output for the pages finished so far. Re-run the same
@@ -35,6 +38,26 @@ command to resume.
 "Read quality" (`mean_conf`) is the OCR engine's own certainty, never a
 measure of accuracy. A page with mean quality below 0.70, or with nothing
 readable, is flagged `low_conf` and its text is never shown without that flag.
+
+## Corrections and warnings
+
+Text is never changed automatically. A person's corrections live in
+`corrections.json`, keyed by page id and line index, and are overlaid on the
+OCR text whenever the outputs are regenerated: `document.md`, `document.txt`
+and the per-page files show the corrected text, `document.jsonl` keeps the
+raw OCR and marks the line `corrected` with the person's `corrected_line`,
+and `report.csv` counts them. Each correction records the OCR text it
+replaced, so if a page is read again a correction only re-attaches when the
+line still reads the same; otherwise it is reported as stale. A correction
+may contain newlines (to add a line the OCR missed); an empty one drops the
+line. The app (Milestone 2) is the editor for this file.
+
+At the end of a run the CLI prints warnings, also available to the app:
+pages that read poorly, look blurry or failed (`retake`); two pages that read
+as the same text, usually a repeat photo (`duplicate`); a printed page number
+on two pages (`printed_duplicate`); and a number between the lowest and
+highest seen that no page carries, naming the un-numbered pages that may be
+it (`printed_gap`).
 
 ## Inputs and page order
 
@@ -118,7 +141,7 @@ summary = run_job(
 .venv/bin/python tools/eval_models.py       # CER/WER of OCR configurations vs fixtures/reference/
 ```
 
-CI (`.github/workflows/ci.yml`) runs the same checks on Ubuntu and Windows.
+CI (`.github/workflows/ci.yml`) runs the same checks on Ubuntu, Windows and macOS (Apple Silicon).
 
 ```
 usefultext/          the pipeline: ocr, preprocess, inputs, pipeline, layout, furniture, outputs, settings; cli.py

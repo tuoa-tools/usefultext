@@ -10,7 +10,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest] # macos-latest is Apple Silicon
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

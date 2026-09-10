@@ -280,40 +280,47 @@ days for one person; the UI is the long pole.
   CLI read the six sample photos (24 s, printed order recovered, 4 furniture
   lines stripped). CI runs once the repo is on GitHub.
 
-### Step 1 — pipeline prep (1–2 days)
+### Step 1 — pipeline prep (1–2 days) — done 2026-09-10
 
-All inside `usefultext/`; the CLI gains nothing but keeps working.
+All inside `usefultext/`; the CLI gained `--no-previews` and a warnings
+printout and otherwise behaves as before.
 
-- [ ] `PageSource.base` and `.id`; `PageRecord.id`; relative keys when
-      `base` is set. Test: the same job from two folder locations resumes.
-- [ ] `run_job(..., preview_dir=…)`: `process_page` writes
-      `previews/<id>.jpg` from the rotated 2500 px working image (1600 px,
-      q80). PDF pages the same path. Test: a rotated fixture's preview is
-      upright and its size matches `rec.width/height` scaled.
-- [ ] `usefultext/corrections.py`: `Corrections.load/save`, `apply(record)`,
-      `stale` list (OCR text no longer matches), counts. `write_outputs`,
-      `page_text`, `document_markdown`, `document_jsonl`, `report_csv` take
-      an optional `Corrections`; a corrected line's newlines become separate
-      lines. Test: overlay, revert, stale detection, JSONL fields.
-- [ ] Output naming and cleanup: `pages/page_003_IMG_0042.txt`
-      (`page_003_scan_p2.txt` for PDF pages), first-line provenance
-      `[page 3 of 12 · IMG_0042.jpg · read quality 0.98 · rotated 90° · 2 lines corrected]`,
-      combined `document.txt` with `--- page 3 ---` separators; the writer
-      deletes `pages/*.txt` it did not just write. Test: reorder leaves no
-      stale files.
-- [ ] `usefultext/checks.py`: `warnings(records) -> list[Warning]` with kinds
-      `duplicate` (normalised body text, token-Jaccard prefilter then
-      `SequenceMatcher` ≥ 0.9), `printed_gap` / `printed_duplicate` (from
-      the furniture numbers; `order_by_printed_page`'s notes become
-      structured), `retake` (blurry, low read quality, error). `JobSummary`
-      exposes them; the CLI prints them at the end. Test: synthetic records
-      as in `test_furniture.py`.
-- [ ] `order_by_printed_page` callable without running OCR again (it already
-      is; add a thin `printed_order(records)` helper the app can use on the
-      page list).
-- Done when: the six sample photos run through the CLI produce the new
-  file names, a preview per page, `document.txt`, and warnings; CER on the
-  eval harness unchanged at 0.67%.
+- [x] `PageSource.base` and `.id` (`page_id` falls back to a slug of the
+      label); `PageRecord.id`; keys relative to `base` in posix form, so a
+      document folder can move, be renamed or copied between machines.
+      Test: the same layout in two folders yields the same key.
+- [x] `run_job` writes `previews/<id>.jpg` through `process_page(preview_dir=…)`
+      and `preprocess.write_preview` (rotated as the read decided, 1600 px,
+      q80, atomic); `rec.preview`, `preview_width`, `preview_height` recorded.
+      Boxes stay in full-resolution upright coordinates; a viewer scales by
+      preview width ÷ page width. Test: a 90° preview comes out upright.
+- [x] `usefultext/corrections.py`: `Corrections.load/save/set/revert/live/stale/count`,
+      `overlay(rec)` → `TextLine`s with `origin` ocr|human and the source
+      line index; newlines add lines, "" drops one; a correction re-attaches
+      only while the OCR text it replaced is unchanged. `run_job` reads
+      `corrections.json` at every finalize and never writes it. Every writer
+      takes a `Corrections`; JSONL rows carry `page_id`, `corrected`,
+      `corrected_line`; `report.csv` gains `id`, `corrected_lines`, `preview`.
+- [x] Output naming and cleanup: `pages/page_003_IMG_0042.txt`
+      (`page_003_scan_p2.txt` for PDF pages, label slug clamped to 40 chars),
+      first-line provenance in the quality-note bracket style, quality notes
+      on the following lines, then a blank line; combined `document.txt` with
+      `--- page 3 (photo) ---` separators; the writer deletes `pages/page_*.txt`
+      it did not just write. Test: a reorder leaves no stale files.
+- [x] `usefultext/checks.py`: `job_warnings(records, settings)` →
+      `JobWarning(kind, message, pages)` with kinds `retake`, `duplicate`
+      (normalised body text, token-overlap prefilter then `SequenceMatcher`
+      ≥ `Settings.duplicate_similarity` 0.9), `printed_duplicate`,
+      `printed_gap` (naming the un-numbered pages that may fill it).
+      `quality_note` moved here from outputs.py. `JobSummary.warnings`; the
+      CLI prints them at the end.
+- [x] `furniture.printed_order(records)` for the app's "Sort by printed
+      number" from `state.json` alone.
+- [x] Also: `tools/eval_models.py --configs` accepts a name without its
+      parenthetical (`default`); `macos-latest` (Apple Silicon) added to CI.
+- Done: 40 tests; the six sample photos produce the new file names, six
+  previews, `document.txt` and four warnings (three blurry pages and the
+  printed-number gap at 8); CER unchanged at 0.67%.
 
 ### Step 2 — backend (2–3 days)
 

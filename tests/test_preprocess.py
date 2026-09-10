@@ -1,6 +1,6 @@
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-from usefultext.preprocess import downscale, rotate, rotated_size, sharpness_score
+from usefultext.preprocess import downscale, rotate, rotated_size, sharpness_score, write_preview
 
 
 def _text_page(w=1200, h=1600):
@@ -31,3 +31,12 @@ def test_downscale_and_rotate():
     assert downscale(small, 2500)[1] == 1.0
     assert rotate(small, 90).size == rotated_size(small.size, 90) == (1875, 2500)
     assert rotate(small, 180).size == (2500, 1875)
+
+
+def test_write_preview_is_upright_and_small(tmp_path):
+    img = Image.new("RGB", (300, 200), "white")
+    path = tmp_path / "previews" / "p1.jpg"
+    size = write_preview(img, path, rotation=90, long_edge=150, quality=70)
+    assert size == (100, 150) and path.exists()
+    with Image.open(path) as saved:
+        assert saved.size == (100, 150)

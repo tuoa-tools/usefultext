@@ -59,6 +59,14 @@ class Settings:
     heading_level: int = 2              # brief: headings → "##"
     paragraph_gap_factor: float = 1.6   # line gap above this × median gap → blank line
 
+    # --- previews: an upright JPEG per page, for the app's editor (and HEIC in browsers)
+    previews: bool = True
+    preview_long_edge: int = 1600
+    preview_quality: int = 80
+
+    # --- warnings (checks.py) -----------------------------------------------------
+    duplicate_similarity: float = 0.9   # text similarity above which two pages are "the same"
+
     extra: dict = field(default_factory=dict)  # room for the UI to stash things
 
     def to_dict(self) -> dict:

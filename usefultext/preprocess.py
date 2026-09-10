@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -113,3 +114,19 @@ def rotate(img: Image.Image, degrees_ccw: int) -> Image.Image:
 def rotated_size(size: tuple[int, int], degrees_ccw: int) -> tuple[int, int]:
     w, h = size
     return (h, w) if degrees_ccw % 180 == 90 else (w, h)
+
+
+def write_preview(
+    img: Image.Image, path: Path, rotation: int = 0, long_edge: int = 1600, quality: int = 80
+) -> tuple[int, int]:
+    """Save an upright JPEG preview of a page: rotate by what the read decided,
+    shrink to `long_edge`, write atomically. Returns the preview's (width, height).
+    Region boxes are in full-resolution upright coordinates, so a viewer
+    scales them by preview width ÷ page width."""
+    small, _ = downscale(rotate(img, rotation), long_edge)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    small.convert("RGB").save(tmp, "JPEG", quality=quality, optimize=True)
+    os.replace(tmp, path)
+    return small.size

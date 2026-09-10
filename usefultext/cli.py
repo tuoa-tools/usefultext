@@ -88,6 +88,9 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"RapidOCR detector box threshold (default {d.det_box_thresh}; engine default 0.5)",
     )
     p.add_argument("--title", help="document title for document.md (default: input folder name)")
+    p.add_argument(
+        "--no-previews", action="store_true", help="don't write an upright JPEG of each page"
+    )
     p.add_argument("--quiet", "-q", action="store_true", help="only print the summary")
     p.add_argument("--version", action="version", version=f"UsefulText {__version__}")
     return p
@@ -106,6 +109,7 @@ def settings_from_args(args) -> Settings:
         drop_clipped=not args.keep_clipped,
         det_box_thresh=args.box_thresh,
         strip_furniture=not args.keep_furniture,
+        previews=not args.no_previews,
     )
 
 
@@ -202,17 +206,14 @@ def main(argv: list[str] | None = None) -> int:
     if furniture:
         verb = "removed from the text" if settings.strip_furniture else "kept in the text"
         print(f"{furniture} running header/footer line(s) detected across pages, {verb}.")
-    low = summary.low_conf_pages
-    if low:
-        print(f"{len(low)} page(s) read poorly — consider re-photographing:")
-        for r in low:
-            print(
-                f"  page {r.page}: {r.label} "
-                f"(read quality {r.mean_conf:.2f}, {r.n_regions} regions)"
-            )
-    for r in summary.error_pages:
-        print(f"  page {r.page}: {r.label} FAILED: {r.error}")
-    print(f"Outputs in {args.out}/: pages/*.txt, document.md, document.jsonl, report.csv")
+    if summary.warnings:
+        print(f"{len(summary.warnings)} warning(s):")
+        for w in summary.warnings:
+            print(f"  {w.message}")
+    outputs = "pages/*.txt, document.md, document.txt, document.jsonl, report.csv"
+    if settings.previews:
+        outputs += ", previews/"
+    print(f"Outputs in {args.out}/: {outputs}")
     return 1 if summary.failed else 0
 
 

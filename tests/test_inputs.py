@@ -2,7 +2,14 @@ from pathlib import Path
 
 from PIL import Image
 
-from usefultext.inputs import discover_files, name_looks_unhelpful, natural_key, order_files
+from usefultext.inputs import (
+    PageSource,
+    discover_files,
+    name_looks_unhelpful,
+    natural_key,
+    order_files,
+    slug,
+)
 
 
 def test_natural_sort_order():
@@ -47,3 +54,23 @@ def test_discover_filters_and_skips_hidden(tmp_path: Path):
     (tmp_path / "doc.pdf").write_bytes(b"")
     found = {p.name for p in discover_files([tmp_path])}
     assert found == {"a.JPG", "doc.pdf"}
+
+
+def test_relative_keys_survive_a_move(tmp_path):
+    a, b = tmp_path / "a" / "photos", tmp_path / "b" / "photos"
+    for d in (a, b):
+        d.mkdir(parents=True)
+        (d / "x.jpg").write_bytes(b"")
+    ka = PageSource(a / "x.jpg", base=tmp_path / "a").key
+    kb = PageSource(b / "x.jpg", base=tmp_path / "b").key
+    assert ka == kb == "photos/x.jpg::0"
+    assert PageSource(a / "x.jpg").key != PageSource(b / "x.jpg").key  # absolute by default
+
+
+def test_slug_and_page_id():
+    assert slug("IMG_0042.jpg") == "IMG_0042"
+    assert slug("scan.pdf#p2") == "scan_p2"
+    assert slug("my photo (1).HEIC") == "my_photo_1"
+    assert slug("x" * 60 + ".jpg") == "x" * 40
+    assert PageSource(Path("photos/IMG_0042.jpg")).page_id == "IMG_0042"
+    assert PageSource(Path("photos/IMG_0042.jpg"), id="p7").page_id == "p7"

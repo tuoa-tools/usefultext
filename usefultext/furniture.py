@@ -182,3 +182,11 @@ def order_by_printed_page(sources, printed: dict[str, int | None]) -> tuple[list
         notes.append(f"{s.label} has no printed number; placed after the last numbered page")
     ordered.extend(queue)
     return ordered, notes
+
+
+def printed_order(records) -> tuple[list, list[str]]:
+    """Records in printed-number order — the app's "Sort by printed number" —
+    from the numbers already in state.json, so no page is read again.
+    Returns (ordered records, human-readable notes)."""
+    printed = {r.key: r.printed_page for r in records}
+    return order_by_printed_page(records, printed)

@@ -20,6 +20,8 @@ from pathlib import Path
 from PIL import Image
 
 from . import ocr
+from .checks import job_warnings
+from .corrections import Corrections, overlay
 from .furniture import detect_furniture, order_by_printed_page
 from .inputs import PageSource
 from .layout import (
@@ -31,7 +33,14 @@ from .layout import (
     tall_area_fraction,
 )
 from .ocr import OcrPageResult, OcrRegion
-from .preprocess import downscale, load_image, rotate, rotated_size, sharpness_score
+from .preprocess import (
+    downscale,
+    load_image,
+    rotate,
+    rotated_size,
+    sharpness_score,
+    write_preview,
+)
 from .settings import Settings
 
 
@@ -44,6 +53,7 @@ class PageRecord:
     source: str  # file path
     label: str  # file name (+ #pN for PDFs)
     page_index: int = 0
+    id: str = ""  # the app's page id (previews, corrections); a label slug for the CLI
     page: int = 0  # 1-based position in the job; reassigned on resume
     status: str = "done"  # done | error
     error: str | None = None
@@ -75,6 +85,10 @@ class PageRecord:
     )  # [{"text", "heading", "furniture", "regions": [idx...]}]
     regions: list = field(default_factory=list)  # [OcrRegion.to_dict() + "clipped"] full-res coords
 
+    preview: str = ""  # upright JPEG, relative to the output folder ("previews/<id>.jpg")
+    preview_width: int = 0
+    preview_height: int = 0
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -100,11 +114,21 @@ class PageRecord:
             out.append(line)
         return out
 
-    def body_text(self, skip_furniture: bool = True) -> str:
-        return render_text(self.line_objects(skip_furniture))
+    def text_lines(self, skip_furniture: bool = True, corrections: Corrections | None = None):
+        """The page's lines as they should be shown: the OCR text with any
+        human corrections overlaid (see corrections.py)."""
+        return overlay(self, skip_furniture=skip_furniture, corrections=corrections)
 
-    def markdown_body(self, heading_level: int = 2, skip_furniture: bool = True) -> str:
-        return render_markdown(self.line_objects(skip_furniture), heading_level)
+    def body_text(self, skip_furniture: bool = True, corrections: Corrections | None = None) -> str:
+        return render_text(self.text_lines(skip_furniture, corrections))
+
+    def markdown_body(
+        self,
+        heading_level: int = 2,
+        skip_furniture: bool = True,
+        corrections: Corrections | None = None,
+    ) -> str:
+        return render_markdown(self.text_lines(skip_furniture, corrections), heading_level)
 
 
 def fingerprint(path: Path) -> str:
@@ -215,15 +239,25 @@ def choose_orientation(
 # --------------------------------------------------------------------------- #
 # One page
 # --------------------------------------------------------------------------- #
+PREVIEW_DIR = "previews"
+
+
 def process_page(
-    source: PageSource, settings: Settings, *, sharpness: float | None = None
+    source: PageSource,
+    settings: Settings,
+    *,
+    sharpness: float | None = None,
+    preview_dir: Path | None = None,
 ) -> PageRecord:
+    """Read one page. With `preview_dir`, also write an upright JPEG of it
+    there as `<page id>.jpg` (rec.preview holds the absolute path)."""
     t0 = time.perf_counter()
     rec = PageRecord(
         key=source.key,
         source=str(source.path),
         label=source.label,
         page_index=source.page_index,
+        id=source.page_id,
         fingerprint=fingerprint(source.path),
         processed_at=datetime.now(UTC).isoformat(timespec="seconds"),
     )
@@ -267,6 +301,12 @@ def process_page(
                 result, rotation = flipped, 180
     rec.rotation = rotation
     rec.width, rec.height = rotated_size((full_w, full_h), rotation)
+    if preview_dir is not None and settings.previews:
+        preview_path = Path(preview_dir) / f"{rec.id}.jpg"
+        rec.preview_width, rec.preview_height = write_preview(
+            img_d, preview_path, rotation, settings.preview_long_edge, settings.preview_quality
+        )
+        rec.preview = str(preview_path)
 
     # Regions back to full-resolution coordinates of the upright page.
     regions = [r.scaled(1.0 / scale) for r in result.regions]
@@ -324,6 +364,7 @@ class JobSummary:
     elapsed: float = 0.0
     records: list = field(default_factory=list)  # PageRecord, in page order
     order_notes: list = field(default_factory=list)  # from sort=printed
+    warnings: list = field(default_factory=list)  # JobWarning, see checks.py
 
     @property
     def low_conf_pages(self) -> list[PageRecord]:
@@ -371,6 +412,7 @@ def run_job(
 
     summary = JobSummary(out_dir=str(out), total=len(sources))
     t0 = time.perf_counter()
+    preview_dir = out.resolve() / PREVIEW_DIR if settings.previews else None
 
     def finalize():
         detect_furniture(
@@ -379,7 +421,8 @@ def run_job(
             min_pages=settings.furniture_min_pages,
         )
         state.save(out)
-        write_outputs(out, state, sources, settings)
+        # corrections.json is a person's; it is read here, never written.
+        write_outputs(out, state, sources, settings, corrections=Corrections.load(out))
 
     for i, src in enumerate(sources, start=1):
         if should_stop and should_stop():
@@ -397,13 +440,16 @@ def run_job(
             summary.resumed += 1
         else:
             try:
-                rec = process_page(src, settings, sharpness=precheck.get(src.key))
+                rec = process_page(
+                    src, settings, sharpness=precheck.get(src.key), preview_dir=preview_dir
+                )
             except Exception as exc:
                 rec = PageRecord(
                     key=src.key,
                     source=str(src.path),
                     label=src.label,
                     page_index=src.page_index,
+                    id=src.page_id,
                     status="error",
                     error=f"{type(exc).__name__}: {exc}",
                     fingerprint=fingerprint(src.path) if src.path.exists() else "",
@@ -412,6 +458,8 @@ def run_job(
                 summary.failed += 1
             else:
                 summary.processed += 1
+                if rec.preview:
+                    rec.preview = Path(rec.preview).relative_to(out.resolve()).as_posix()
         rec.page = i
         state.pages[src.key] = rec
         finalize()
@@ -426,5 +474,6 @@ def run_job(
                 state.pages[src.key].page = i
     finalize()
     summary.records = [state.pages[s.key] for s in sources if s.key in state.pages]
+    summary.warnings = job_warnings(summary.records, settings)
     summary.elapsed = round(time.perf_counter() - t0, 2)
     return summary

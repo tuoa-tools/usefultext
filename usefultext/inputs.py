@@ -8,6 +8,7 @@ PDFs expand to one PageSource per page, in document order.
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -28,6 +29,8 @@ class PageSource:
     path: Path
     page_index: int = 0  # 0-based page within a PDF; 0 for images
     n_pages: int = 1
+    base: Path | None = None  # keys are relative to this folder (the app's document folder)
+    id: str | None = None  # the app's stable page id; previews and corrections are keyed by it
 
     @property
     def is_pdf(self) -> bool:
@@ -35,13 +38,40 @@ class PageSource:
 
     @property
     def key(self) -> str:
+        """Identifies the page in state.json. Absolute by default (the CLI's
+        inputs live anywhere); relative to `base` when one is given, in posix
+        form, so a document folder can be moved, renamed or copied to another
+        machine and still resume."""
+        if self.base is not None:
+            rel = os.path.relpath(self.path.resolve(), Path(self.base).resolve())
+            return f"{Path(rel).as_posix()}::{self.page_index}"
         return f"{self.path.resolve()}::{self.page_index}"
+
+    @property
+    def page_id(self) -> str:
+        """The id the app gave this page, else one derived from its label."""
+        return self.id or slug(self.label)
 
     @property
     def label(self) -> str:
         if self.is_pdf and self.n_pages > 1:
             return f"{self.path.name}#p{self.page_index + 1}"
         return self.path.name
+
+
+_UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def slug(label: str, max_len: int = 40) -> str:
+    """A file-name-safe form of a page label, without its extension:
+    'IMG_0042.jpg' → 'IMG_0042', 'scan.pdf#p2' → 'scan_p2'. Clamped so long
+    names stay inside Windows' path limit once a title and folder are added."""
+    name, _, page = label.partition("#")
+    stem = Path(name).stem or name
+    if page:
+        stem = f"{stem}_{page}"
+    s = _UNSAFE.sub("_", stem).strip("._-")
+    return s[:max_len].rstrip("._-") or "page"
 
 
 # --------------------------------------------------------------------------- #
