@@ -123,6 +123,11 @@ tkinter, pytest, the CLI's console script.
       And the decision: on Windows the app opens in a browser tab by
       default (`--window` opts into the window), media_downloader's route
       there all along; idle shutdown ends the server once the tab is gone.
+      The machine is Windows 11 with Edge and Chrome installed, so the
+      WebView2 runtime was present: the fault is between pywebview's
+      WinForms side (pythonnet) and the control, not a missing runtime.
+      Worth a fresh look with a newer pywebview/pythonnet on a real
+      machine, not before.
 - [ ] Done when: the installer installs and runs on Adam's Windows
       machine in the browser, HEIC and PDF included.
 

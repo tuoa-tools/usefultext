@@ -5,8 +5,8 @@ your machine. A local app with its own window: drop in the photos, read them,
 check the text beside the picture, correct a line where the engine slipped,
 and export. OCR is RapidOCR on ONNX Runtime (CPU); the models ship inside the
 `rapidocr` wheel, so nothing is downloaded or uploaded at run time. One of the
-"Useful" family of tools, alongside
-[media_downloader](https://github.com/adam-tuoa/media_downloader).
+"Useful" family of tools from [tuoa-tools](https://github.com/tuoa-tools),
+alongside [UsefulMedia](https://github.com/tuoa-tools/usefulmedia).
 
 **Status:** version 0.3.0. Milestones 1 (the command line) and 2 (the app)
 are complete; Milestone 3 packages the app for a machine without Python.
