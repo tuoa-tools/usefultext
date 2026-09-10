@@ -25,6 +25,8 @@ dependencies = [
     # Step 4: suspect words (flags only) and the Word export.
     "pyspellchecker>=0.8",
     "python-docx>=1.1",
+    # Step 5: the desktop window (WKWebView / WebView2 / WebKitGTK); a browser tab otherwise.
+    "pywebview>=5",
 ]
 
 [project.scripts]
@@ -33,7 +35,7 @@ usefultext-app = "app.launcher:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6"]
-build = ["pyinstaller>=6.11", "pywebview>=5"]
+build = ["pyinstaller>=6.11"]
 
 [project.urls]
 Homepage = "https://github.com/tuoa-tools/usefultext"

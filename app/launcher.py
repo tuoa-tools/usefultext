@@ -1,10 +1,15 @@
-"""Desktop entry point: start the server on a free localhost port and open the browser.
+"""Desktop entry point: start the server on a free localhost port and show the app —
+in its own window (pywebview) when that works, otherwise in a browser tab.
 
 Security model for a local app: the API only answers requests carrying this launch's secret,
 delivered once via /launch?token=... which sets an HttpOnly SameSite=Strict cookie. Other
 websites can't send that cookie, and CORS blocks them from reading anything anyway.
 
-Copied from media_downloader; the pywebview window (PLAN_M2.md step 5) wraps this later.
+Shutdown: closing the window quits. With a browser tab there is no window to close, so
+the server exits by itself once the page has stopped pinging /api/health for two minutes
+and no document is being read (app.main's idle watch). /api/quit does both.
+
+The launcher, token and single-instance parts are media_downloader's; the window is ours.
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ import secrets
 import socket
 import sys
 import threading
+import time
 import urllib.request
 import webbrowser
 from pathlib import Path
@@ -79,10 +85,27 @@ def launch_url(port: int, token: str) -> str:
     return f"http://127.0.0.1:{port}/launch?token={token}"
 
 
+def wait_until_started(server, thread: threading.Thread, timeout: float = 30.0) -> bool:
+    """True once uvicorn is accepting connections; False if it died or timed out."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if server.started:
+            return True
+        if not thread.is_alive():
+            return False
+        time.sleep(0.05)
+    return False
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="UsefulText")
     parser.add_argument("--port", type=int, default=0, help="listen port (default: any free one)")
-    parser.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
+    parser.add_argument(
+        "--browser", action="store_true", help="open a browser tab instead of the app's window"
+    )
+    parser.add_argument(
+        "--no-browser", action="store_true", help="only run the server; open nothing"
+    )
     args = parser.parse_args(argv)
 
     if sys.stdout is None or sys.stderr is None:  # pythonw.exe / windowed app: no console streams
@@ -106,26 +129,47 @@ def main(argv: list[str] | None = None) -> int:
 
     import uvicorn
 
+    from app import window
     from app.main import app  # after the environment is set
+
+    url = launch_url(port, token)
+    use_window = not args.browser and not args.no_browser and window.available()
+    win = window.DesktopWindow(url, folder / "webview") if use_window else None
 
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_config=None, log_level="info")
     server = uvicorn.Server(config)
-    app.state.on_quit = lambda: setattr(server, "should_exit", True)
+
+    def quit_all() -> None:
+        server.should_exit = True
+        if win is not None:
+            win.close()
+
+    app.state.on_quit = quit_all
+    # A browser tab can be closed without telling us; the window cannot.
+    app.state.idle_shutdown = win is None and not args.no_browser
     instance = write_instance(folder, port, token)
-    log.info("UsefulText starting on http://127.0.0.1:%s", port)
+    log.info("UsefulText %s starting on http://127.0.0.1:%s", app.version, port)
 
-    if not args.no_browser:
-
-        def open_when_ready() -> None:
-            while not server.started:
-                threading.Event().wait(0.1)
-            webbrowser.open(launch_url(port, token))
-
-        threading.Thread(target=open_when_ready, daemon=True).start()
-
+    thread = threading.Thread(target=server.run, name="usefultext-server", daemon=True)
+    thread.start()
     try:
-        server.run()
+        if not wait_until_started(server, thread):
+            log.error("the server did not start; see app.log")
+            return 1
+        if win is not None and win.open():  # the window's loop runs here until it closes
+            log.info("window closed")
+        else:
+            if win is not None:  # the window could not start: the tab it is, with idle shutdown
+                app.state.idle_shutdown = True
+            if not args.no_browser:
+                webbrowser.open(url)
+            while thread.is_alive():
+                thread.join(0.5)
+    except KeyboardInterrupt:
+        pass
     finally:
+        server.should_exit = True
+        thread.join(timeout=15)
         instance.unlink(missing_ok=True)
         log.info("stopped")
     return 0

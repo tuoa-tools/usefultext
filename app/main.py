@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import os
 import shutil
+import time
 import zipfile
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -45,6 +47,8 @@ from usefultext.preprocess import heif_error, register_heif
 COOKIE = "usefultext_token"
 HEADER = "x-usefultext-token"
 
+log = logging.getLogger(__name__)
+
 
 def merged_settings(config: AppConfig, job: Job | None = None) -> Settings:
     """Pipeline settings: the calibrated defaults, the app's choices, then
@@ -72,15 +76,49 @@ async def lifespan(app: FastAPI):
     app.state.token = os.environ.get("USEFULTEXT_TOKEN") or None
     app.state.desktop = os.environ.get("USEFULTEXT_DESKTOP") == "1"
     app.state.quit_requested = False
+    app.state.last_ping = time.monotonic()
     if not hasattr(app.state, "on_quit"):
         app.state.on_quit = None
+    if not hasattr(app.state, "idle_shutdown"):
+        app.state.idle_shutdown = False
     worker = Worker(lambda: app.state.library, lambda job: merged_settings(app.state.config, job))
     app.state.worker = worker
     worker.start()
+    idle = asyncio.create_task(_idle_watch(app)) if app.state.desktop else None
     try:
         yield
     finally:
+        if idle is not None:
+            idle.cancel()
         worker.stop()
+
+
+IDLE_SECONDS = 120.0  # no /api/health ping for this long, and nothing to do → exit
+IDLE_CHECK_SECONDS = 15.0
+
+
+def idle_expired(state, now: float) -> bool:
+    """Desktop mode with a browser tab as the UI (the launcher sets
+    `idle_shutdown`): the page pings /api/health every minute, so two minutes
+    of silence means the tab is gone. A document being read keeps the server
+    alive until it is done."""
+    if not getattr(state, "desktop", False) or not getattr(state, "idle_shutdown", False):
+        return False
+    worker = getattr(state, "worker", None)
+    if worker is not None and worker.progress:
+        return False
+    return now - getattr(state, "last_ping", now) >= IDLE_SECONDS
+
+
+async def _idle_watch(app: FastAPI) -> None:
+    while True:
+        await asyncio.sleep(IDLE_CHECK_SECONDS)
+        if idle_expired(app.state, time.monotonic()):
+            log.info("no UI for %.0f s and nothing to do: exiting", IDLE_SECONDS)
+            app.state.quit_requested = True
+            if app.state.on_quit:
+                app.state.on_quit()
+            return
 
 
 app = FastAPI(title="UsefulText", version=__version__, lifespan=lifespan)
@@ -353,7 +391,9 @@ async def launch(token: str, request: Request) -> RedirectResponse:
 
 @app.get("/api/health")
 async def health(request: Request) -> dict:
+    """Also the UI's keep-alive: the page calls this every minute (see idle_expired)."""
     state = request.app.state
+    state.last_ping = time.monotonic()
     return {
         "status": "ok",
         "version": __version__,

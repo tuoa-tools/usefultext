@@ -527,19 +527,38 @@ the region boxes made a split feasible.
   two-column page falls back to one column, since the gutter is searched
   as a vertical strip (deskew is parked with Milestone 3's list).
 
-### Step 5 — window and shutdown (½–1 day)
+### Step 5 — window and shutdown (½–1 day) — done 2026-09-10
 
-- [ ] `pywebview` window around the launch URL (WKWebView on the Mac),
-      close-to-quit, native folder picker for Settings and add-from-folder
-      (this is where "move instead" becomes a dialog rather than a typed
-      path). Falls back to the browser tab when pywebview cannot start.
-- [ ] Idle shutdown as media_downloader planned it: the UI pings
-      `/api/health` each minute; no ping for two minutes and no job running
-      → exit. Only in desktop mode.
-- [ ] Version 0.2.0; README rewritten around the app; `HANDOVER.md` updated.
-- Done when: `python -m app.launcher` opens a window on the Mac and the
-  whole step-3 friend-test passes inside it. Windows/Linux WebView2/webkit
-  checks are Milestone 3 work on real machines.
+- [x] `app/window.py`: a pywebview window (WKWebView on the Mac) around the
+      launch URL, 1280×860, downloads allowed (the Export buttons), not
+      private (the page's zoom and presets survive a restart; storage under
+      the app-data folder). The launcher runs uvicorn in a thread and the
+      window's loop on the main thread; the window closing quits, and
+      `/api/quit` closes the window as well as the server. media_downloader
+      v0.6.1 turned out to have no window yet (browser only), so this is
+      ours. Falls back to a browser tab when pywebview is missing or its
+      engine cannot start (`--browser` forces the tab; `--no-browser` runs
+      the server alone). pywebview is a plain dependency now (pip resolves
+      the per-platform bridge: pyobjc on the Mac, pythonnet on Windows).
+- [x] Native dialogs through the window's `js_api` (`pick_folder`,
+      `pick_files`): first-run and Settings library folder, the library's
+      "Choose photos… / Choose a folder…", the pages view's "Choose a
+      folder… / Choose photos or PDFs…". Paths go through `add-path`, so
+      Settings' copy-or-move applies and the typed-path box is hidden in
+      the window; dropped or browser-chosen files are still copied (a
+      browser delivers bytes). The UI detects the bridge with
+      `pywebviewready` (`frontend/src/lib/native.ts`).
+- [x] Idle shutdown: the page pings `/api/health` every minute (also in
+      the background); in desktop mode with a browser tab as the UI
+      (`app.state.idle_shutdown`, set by the launcher), two minutes without
+      a ping and no document being read → exit. Not with the window (closing
+      it quits) and never for a dev server.
+- [x] Version 0.2.0; README rewritten around the app; `HANDOVER.md`
+      brought up to the end of Milestone 2. Tests: launcher helpers, the
+      bridge, idle logic, keep-alive, quit (6 in `tests/test_desktop.py`).
+- Done when: `usefultext-app` opens a window on the Mac and the step-3
+  friend-test passes inside it — Adam's click-through. Windows/Linux
+  WebView2/webkit checks are Milestone 3 work on real machines.
 
 ## 4. Taken from media_downloader
 

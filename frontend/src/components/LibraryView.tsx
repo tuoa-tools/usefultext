@@ -3,6 +3,7 @@ import { FolderOpen, Plus, Trash2, Upload } from 'lucide-react';
 import { useRef, useState, type DragEvent } from 'react';
 import {
   addFiles,
+  addPath,
   createDocument,
   getLibrary,
   removeDocument,
@@ -17,6 +18,7 @@ import {
   type Dropped,
 } from '../lib/files';
 import { plural, shortDate, statusLabel, statusTone } from '../lib/format';
+import { titleForPaths, useNativeDialogs } from '../lib/native';
 import { compactInputClass } from '../lib/ui';
 import ActionButton from './ActionButton';
 import ErrorText from './ErrorText';
@@ -55,6 +57,18 @@ export default function LibraryView({ onOpen }: { onOpen: (id: string) => void }
       onOpen(doc.id);
     },
   });
+  /** The window's own dialogs hand over paths, so the files can be moved, not just copied. */
+  const fromPaths = useMutation({
+    mutationFn: async (paths: string[]) => {
+      const doc = await createDocument(titleForPaths(paths));
+      for (const p of paths) await addPath(doc.id, p, null);
+      return doc;
+    },
+    onSuccess: (doc) => {
+      qc.invalidateQueries({ queryKey: ['library'] });
+      onOpen(doc.id);
+    },
+  });
   const remove = useMutation({
     mutationFn: removeDocument,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['library'] }),
@@ -64,7 +78,11 @@ export default function LibraryView({ onOpen }: { onOpen: (id: string) => void }
   const docs = library.data?.documents ?? [];
   return (
     <section className="space-y-4">
-      <DropToCreate pending={fromFiles.isPending} onDropped={(d) => fromFiles.mutate(d)} />
+      <DropToCreate
+        pending={fromFiles.isPending || fromPaths.isPending}
+        onDropped={(d) => fromFiles.mutate(d)}
+        onPaths={(paths) => fromPaths.mutate(paths)}
+      />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-semibold">Your library</h2>
         <ActionButton
@@ -105,7 +123,7 @@ export default function LibraryView({ onOpen }: { onOpen: (id: string) => void }
           <ErrorText error={create.error} />
         </form>
       )}
-      <ErrorText error={library.error ?? remove.error ?? fromFiles.error} />
+      <ErrorText error={library.error ?? remove.error ?? fromFiles.error ?? fromPaths.error} />
       {library.isSuccess && docs.length === 0 && !creating && (
         <p className="text-center text-sm text-slate-500">
           Nothing here yet. Drop a document’s photos above to start.
@@ -136,10 +154,13 @@ export default function LibraryView({ onOpen }: { onOpen: (id: string) => void }
 function DropToCreate({
   pending,
   onDropped,
+  onPaths,
 }: {
   pending: boolean;
   onDropped: (d: Dropped) => void;
+  onPaths: (paths: string[]) => void;
 }) {
+  const native = useNativeDialogs();
   const [over, setOver] = useState(false);
   const files = useRef<HTMLInputElement>(null);
   const folder = useRef<HTMLInputElement>(null);
@@ -176,14 +197,22 @@ function DropToCreate({
         <button
           type="button"
           className="text-blue-700 hover:underline"
-          onClick={() => files.current?.click()}
+          onClick={async () => {
+            if (!native) return files.current?.click();
+            const chosen = await native.pick_files();
+            if (chosen.length) onPaths(chosen);
+          }}
         >
           Choose photos…
         </button>
         <button
           type="button"
           className="text-blue-700 hover:underline"
-          onClick={() => folder.current?.click()}
+          onClick={async () => {
+            if (!native) return folder.current?.click();
+            const chosen = await native.pick_folder();
+            if (chosen) onPaths([chosen]);
+          }}
         >
           Choose a folder…
         </button>

@@ -9,7 +9,8 @@ import {
   type AppSettings,
   type Columns,
 } from '../api';
-import { compactInputClass } from '../lib/ui';
+import { useNativeDialogs } from '../lib/native';
+import { compactInputClass, headerButton } from '../lib/ui';
 import ErrorText from './ErrorText';
 
 export default function SettingsPanel({ onSaved }: { onSaved?: () => void }) {
@@ -80,6 +81,7 @@ function SettingsForm({ initial, onSaved }: { initial: AppSettings; onSaved?: ()
   const [minConf, setMinConf] = useState(String(initial.min_page_conf));
   const [blur, setBlur] = useState(String(initial.blur_threshold));
   const [columns, setColumns] = useState<Columns>(initial.columns ?? 'auto');
+  const native = useNativeDialogs();
 
   const save = useMutation({
     mutationFn: () =>
@@ -107,11 +109,25 @@ function SettingsForm({ initial, onSaved }: { initial: AppSettings; onSaved?: ()
     >
       <label className="block">
         <span className="text-sm font-medium">Library folder</span>
-        <input
-          className={compactInputClass}
-          value={libraryDir}
-          onChange={(e) => setLibraryDir(e.target.value)}
-        />
+        <span className="flex gap-2">
+          <input
+            className={`${compactInputClass} flex-1`}
+            value={libraryDir}
+            onChange={(e) => setLibraryDir(e.target.value)}
+          />
+          {native && (
+            <button
+              type="button"
+              className={headerButton}
+              onClick={async () => {
+                const chosen = await native.pick_folder();
+                if (chosen) setLibraryDir(chosen);
+              }}
+            >
+              Choose…
+            </button>
+          )}
+        </span>
         <span className="text-xs text-slate-500">
           One sub-folder per document. Move it later and everything comes along.
         </span>
@@ -144,8 +160,8 @@ function SettingsForm({ initial, onSaved }: { initial: AppSettings; onSaved?: ()
           </label>
         ))}
         <span className="block text-xs text-slate-500">
-          Magazines and reports set text in columns; photographed book pages don’t. Applies to
-          pages read from now on — “Read again” re-reads the ones already done.
+          Magazines and reports set text in columns; photographed book pages don’t. Applies to pages
+          read from now on — “Read again” re-reads the ones already done.
         </span>
       </fieldset>
       <div className="grid gap-3 sm:grid-cols-3">

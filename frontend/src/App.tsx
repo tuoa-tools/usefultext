@@ -8,6 +8,7 @@ import LibraryView from './components/LibraryView';
 import Modal from './components/Modal';
 import SettingsPanel from './components/SettingsPanel';
 import StatusBar, { QuitButton } from './components/StatusBar';
+import { useNativeDialogs } from './lib/native';
 import { useRoute } from './lib/route';
 import { compactInputClass, headerButton } from './lib/ui';
 
@@ -17,7 +18,14 @@ export default function App() {
   const [route, navigate] = useRoute();
   const [panel, setPanel] = useState<Panel>(null);
   const closePanel = useCallback(() => setPanel(null), []);
-  const health = useQuery({ queryKey: ['health'], queryFn: getHealth });
+  // Also the keep-alive: in desktop mode with a browser tab, two minutes without this
+  // ping (and nothing being read) tells the server the tab is gone and it exits.
+  const health = useQuery({
+    queryKey: ['health'],
+    queryFn: getHealth,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: true,
+  });
 
   return (
     <main
@@ -79,6 +87,7 @@ function FirstRun() {
 function FirstRunForm({ suggested }: { suggested: string }) {
   const qc = useQueryClient();
   const [dir, setDir] = useState(suggested);
+  const native = useNativeDialogs();
   const save = useMutation({
     mutationFn: () => saveSettings({ library_dir: dir }),
     onSuccess: () => qc.invalidateQueries(),
@@ -96,12 +105,26 @@ function FirstRunForm({ suggested }: { suggested: string }) {
         Every document you read becomes a folder here, with its photos, its text and your
         corrections. You can move the folder later.
       </p>
-      <input
-        className={compactInputClass}
-        value={dir}
-        onChange={(e) => setDir(e.target.value)}
-        aria-label="Library folder"
-      />
+      <div className="flex gap-2">
+        <input
+          className={`${compactInputClass} flex-1`}
+          value={dir}
+          onChange={(e) => setDir(e.target.value)}
+          aria-label="Library folder"
+        />
+        {native && (
+          <button
+            type="button"
+            className={headerButton}
+            onClick={async () => {
+              const chosen = await native.pick_folder();
+              if (chosen) setDir(chosen);
+            }}
+          >
+            Choose…
+          </button>
+        )}
+      </div>
       <ErrorText error={save.error} />
       <button
         type="submit"

@@ -1,71 +1,101 @@
 # UsefulText
 
-Turns a folder of photographed document pages (and PDFs) into text and
-markdown, entirely on your machine. OCR is RapidOCR on ONNX Runtime (CPU);
-the models ship inside the `rapidocr` wheel, so nothing is downloaded or
-uploaded at run time. Formerly PhotoText; one of the "Useful" family of
-tools alongside [media_downloader](https://github.com/adam-tuoa/media_downloader).
+Turns photos of document pages (and PDFs) into text and markdown, entirely on
+your machine. A local app with its own window: drop in the photos, read them,
+check the text beside the picture, correct a line where the engine slipped,
+and export. OCR is RapidOCR on ONNX Runtime (CPU); the models ship inside the
+`rapidocr` wheel, so nothing is downloaded or uploaded at run time. One of the
+"Useful" family of tools, alongside
+[media_downloader](https://github.com/adam-tuoa/media_downloader).
 
-**Status:** Milestone 1, the command line, is complete and calibrated on real
-photos. Milestone 2, a local app with a browser UI (library, page ordering,
-side-by-side editor, exports), is in progress — see
-`PROJECT_DOCS/PLAN_M2.md`. `PROJECT_DOCS/BRIEF.md` is the specification.
+**Status:** version 0.2.0. Milestone 1 (the command line) and Milestone 2 (the
+app) are complete; Milestone 3 — installers for Mac, Windows and Linux for a
+machine without Python — is next. `PROJECT_DOCS/BRIEF.md` is the
+specification, `PROJECT_DOCS/PLAN_M2.md` the record of how the app was built.
+
+## Install and run
 
 ```
 python3.13 -m venv .venv && .venv/bin/pip install -e .
+.venv/bin/usefultext-app
+```
+
+Windows: `.venv\Scripts\usefultext-app`. The app opens in its own window
+(WKWebView on macOS, WebView2 on Windows, WebKitGTK on Linux) and asks, the
+first time, where your library folder should live — `Documents/UsefulText`
+is suggested. Closing the window quits; reading in progress pauses and
+resumes next time. If the window cannot start on a machine, the app opens in
+a browser tab instead (`--browser` asks for that outright) and exits by
+itself two minutes after the tab is gone, once nothing is being read.
+Settings and the log (`app.log`) live in the per-user app-data folder.
+
+The same pipeline runs from the command line:
+
+```
 .venv/bin/usefultext Documents/ --out output/
 ```
 
-`python -m usefultext` does the same. Windows: `.venv\Scripts\usefultext`.
+## The app
 
-## What you get in `--out`
+- **Library.** One folder per document inside your library folder, holding
+  the photos, the text and your corrections, so a document can be moved,
+  copied to another machine or opened in Finder/Explorer. Drop a folder or
+  photos onto the library to start a document named after them; "Remove
+  from library" sends the folder to the trash, never further.
+- **Pages.** Thumbnails in reading order, dragged into place or sorted by
+  name, photo time or the printed page numbers found in running headers;
+  leave a page out, replace it with a retake, add more. Photos are copied
+  into the document's folder; in the window, "Choose a folder…" and "Choose
+  photos or PDFs…" hand over paths, and Settings decides whether those are
+  copied or moved. A blur check at add time and the warnings panel (pages
+  that read poorly, likely repeat photos, a page number seen twice, a page
+  number missing) say what to retake before and after reading.
+- **Reading.** One button — Start, Pause, Resume — with progress, the time
+  left and each page's read quality as it lands. Every page's result is
+  written as soon as it is read, so a crash or a quit loses nothing; "Read
+  again" re-reads on purpose. Read quality is the engine's own certainty,
+  never a measure of accuracy; a page under the gate (0.70) is flagged.
+- **Editor.** The page beside its text: one box per line on the picture,
+  one editable line on the right, click either to find the other. The
+  picture panel fits the whole page or the selected line, with zoom, and
+  follows the selection. Corrections save as you type, show their origin,
+  and can be reverted line by line; the engine's text is never changed
+  behind your back. Suspect words — words the dictionary does not know — are
+  highlighted with next/previous cycling across pages and an "ignore" that
+  teaches the library; flags only, never automatic corrections. Two-column
+  pages read column by column (see below).
+- **Export.** Copy all the text; download Markdown, plain text, the per-page
+  text files as a zip, JSONL, CSV or Word (`.docx`); open the folder.
+- **Settings.** The library folder; copy or move for files named by path;
+  columns (detect, or always one); PDF resolution; the read-quality gate;
+  the blur threshold; the ignored words. A document can override the
+  reading settings for itself.
+
+Security, for a local app: the server binds to 127.0.0.1 on a free port,
+answers only requests carrying this launch's secret (set once as an
+HttpOnly cookie by the launch URL), and allows no other origin.
+
+## What a document folder holds
+
+The app's document folder and the command line's `--out` are the same
+layout:
 
 | File | Contents |
 |---|---|
+| `photos/` | the page photos and PDFs as added (the app only) |
+| `job.json` | the app's page list, order and settings (the app only) |
 | `pages/page_NNN_<photo>.txt` | plain text per page in reading order, named by position then photo; the first line is a bracketed provenance note (`[page 3 of 12 · IMG_0042.jpg · read quality 0.98 · rotated 90° · 2 columns]`), followed by any quality notes, a blank line, then the text |
 | `document.md` | all pages with `## Page N` markers, best-effort `##` headings, paragraph breaks, and a `> ⚠` note on pages that read poorly |
 | `document.txt` | all pages as plain text with `--- page N (photo) ---` separators |
 | `document.jsonl` | one line per text region: `page, page_id, printed_page, source, line, order, role (body/header/footer), column (0 = full width), text, conf, bbox, clipped, low_conf_page, corrected, corrected_line` (bbox in full-resolution pixels of the upright page; `text` is always the raw OCR) |
 | `report.csv` | per page: `id, filename, printed_page, regions, mean_conf, low_conf, sharpness, blurry, rotation, columns, dropped_regions, clipped_regions, furniture_lines, corrected_lines, elapsed_s, status, error, preview` |
-| `previews/<id>.jpg` | an upright JPEG of each page (1600 px long edge), rotated as the read decided — what the app's editor shows; `--no-previews` skips them |
-| `state.json` | job state; a re-run skips pages already read (use `--force` to redo) |
-| `corrections.json` | a person's edits (see below); never written by the pipeline |
+| `previews/<id>.jpg` | an upright JPEG of each page (1600 px long edge), rotated as the read decided — what the editor shows; `--no-previews` skips them on the command line |
+| `state.json` | the pipeline's results per page; a re-run skips pages already read (`--force` redoes them) |
+| `corrections.json` | a person's edits; never written by the pipeline |
+| `dictionary.txt` | in the library folder: the ignored words, one per line |
 
 Every file is rewritten after each page, so an interrupted run leaves a
-complete, consistent output for the pages finished so far. Re-run the same
-command to resume.
-
-"Read quality" (`mean_conf`) is the OCR engine's own certainty, never a
-measure of accuracy. A page with mean quality below 0.70, or with nothing
-readable, is flagged `low_conf` and its text is never shown without that flag.
-
-## The app (Milestone 2)
-
-`app/` is a FastAPI server on localhost around the same pipeline: a library
-folder with one sub-folder per document (`job.json` page list, `photos/`,
-the outputs above), one worker thread reading documents in turn, pause and
-resume, per-line corrections and exports. `frontend/` is the browser UI
-(React 19, TypeScript, Vite, Tailwind, TanStack Query — the media_downloader
-stack): the library, a document's pages with drag ordering and warnings,
-the side-by-side editor, exports.
-
-Development, two terminals:
-
-```
-.venv/bin/uvicorn app.main:app --reload --port 8000     # the API; docs at http://127.0.0.1:8000/docs
-cd frontend && npm install && npm run dev               # the UI at http://localhost:5173 (proxies /api)
-```
-
-The packaged layout — FastAPI serving the built UI from one port:
-
-```
-(cd frontend && npm run build)     # -> app/static/
-.venv/bin/usefultext-app           # desktop mode: free port, launch token, opens the browser
-```
-
-On first start the app asks where the library folder should be. Frontend
-checks: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`
-(CI runs them on every push).
+complete, consistent output for the pages finished so far.
 
 ## Corrections and warnings
 
@@ -78,97 +108,90 @@ and `report.csv` counts them. Each correction records the OCR text it
 replaced, so if a page is read again a correction only re-attaches when the
 line still reads the same; otherwise it is reported as stale. A correction
 may contain newlines (to add a line the OCR missed); an empty one drops the
-line. The app (Milestone 2) is the editor for this file.
+line.
 
-The app also flags **suspect words**: words its English list does not know,
-checked on the text as shown (corrections applied, headers and footers left
-out). A suspect is an OCR misread ("cight", "me1ting"), a name, or a word the
-list lacks; the editor highlights them, cycles through them, and "ignore"
-adds a word to the library's `dictionary.txt` so it is never flagged again.
-Flags only, never corrections. The list is pyspellchecker's American English
-plus British and Australian spellings added in `usefultext/spellcheck.py`;
-a capitalised unknown word that recurs on three or more pages of a document
-is taken for a name. On the six sample pages it flags exactly the misreads.
+Suspect words are checked on the text as shown (corrections applied,
+headers and footers left out). A suspect is an OCR misread ("cight",
+"me1ting"), a name, or a word the list lacks. The list is pyspellchecker's
+American English plus British and Australian spellings added in
+`usefultext/spellcheck.py`; a capitalised unknown word that recurs on three
+or more pages of a document is taken for a name. On the six sample pages it
+flags exactly the misreads.
 
-The Word export (`.docx`, python-docx) has headings, paragraphs joined at
-the layout's paragraph breaks, a page break between pages, quality notes in
-italics on pages that read poorly, and the provenance in the file's
-properties.
+The Word export has headings, paragraphs joined at the layout's paragraph
+breaks, a page break between pages, quality notes in italics on pages that
+read poorly, and the provenance in the file's properties.
 
-At the end of a run the CLI prints warnings, also available to the app:
-pages that read poorly, look blurry or failed (`retake`); two pages that read
-as the same text, usually a repeat photo (`duplicate`); a printed page number
+Warnings, in the app's panel and at the end of a command-line run: pages
+that read poorly, look blurry or failed (`retake`); two pages that read as
+the same text, usually a repeat photo (`duplicate`); a printed page number
 on two pages (`printed_duplicate`); and a number between the lowest and
 highest seen that no page carries, naming the un-numbered pages that may be
 it (`printed_gap`).
 
-## Inputs and page order
+## The command line
 
-jpg/jpeg, png, heic/heif, tif, bmp, webp and pdf (rendered at `--dpi`,
-default 200, clamped to ~9 MP per page). Pages are ordered by natural
-filename sort (`img2` before `img10`); if the names look random (UUIDs,
-hashes, no digits) the EXIF DateTimeOriginal is used instead. `--sort
-name|time` overrides this. The ordered list is printed before OCR starts.
+`usefultext <inputs…> --out <folder>` (or `python -m usefultext`). Inputs
+are files or folders of jpg/jpeg, png, heic/heif, tif, bmp, webp and pdf
+(rendered at `--dpi`, default 200, clamped to ~9 MP per page). Pages are
+ordered by natural filename sort (`img2` before `img10`); if the names look
+random (UUIDs, hashes, no digits) the EXIF DateTimeOriginal is used instead.
+`--sort name|time` overrides this; `--sort printed` reads the pages first,
+then orders them by the page numbers found in running headers/footers,
+printing the mapping with a note for every guess. Other flags: `--force`,
+`--columns auto|1`, `--no-rotate`, `--keep-clipped`, `--keep-furniture`,
+`--no-previews`, and the thresholds below (`--min-conf`, `--region-conf`,
+`--blur-threshold`, `--heading-ratio`, `--box-thresh`, `--max-edge`).
+`--help` lists them all.
 
-`--sort printed` reads the pages first, then orders them by the page
-numbers found in running headers/footers. Pages without a number fill the
-gaps in capture order (or go last), and the resulting mapping is printed
-with a note for every guess, so check it. On the sample set (random file
-names, identical timestamps) this recovered the true order 6–11.
+## How a page is read
 
-## Running headers and footers
+Calibrated on real phone photos of book pages; every threshold lives in
+`usefultext/settings.py`.
 
-Short lines within the top or bottom 12% of a page whose text, digits
-removed, recurs on at least two pages are treated as running headers or
-footers ("6 | JOHN KOTTER…", "OUR ICEBERG IS MELTING | 7", a bare page
-number). They are removed from the text and markdown but kept in the JSONL
-with `role: header/footer`; `--keep-furniture` keeps them in the text. A
-chapter title appears once, so it is never stripped. Detection is job-wide,
-so a single-page job never strips anything.
-
-## Preprocessing, as calibrated on the sample photos
-
-- **EXIF orientation** is applied first.
-- **Downscale** to a 2500 px long edge before inference.
-- **Blur check**: variance of the Laplacian measured over edge pixels only
-  (a whole-frame variance tracked how much text was on the page rather than
-  blur). Below `--blur-threshold` (65) the page is flagged "looks blurry".
+- **EXIF orientation** is applied first, then a **downscale** to a 2500 px
+  long edge before inference.
+- **Blur check**: variance of the Laplacian over edge pixels only (a
+  whole-frame variance tracked how much text was on the page rather than
+  blur). Below the threshold (65) the page "looks blurry".
 - **Sideways pages**: if the first read looks weak, or most text boxes are
   taller than they are wide, the page is tried at 90° and 270° with the
   line classifier off (so the wrong direction scores honestly low, ~0.6
   versus ~0.99) and re-read at the winner.
 - **Upside-down pages**: the per-line angle classifier's decisions are read
   back from the first pass; if most lines were flipped, the page is re-read
-  rotated 180° so the reading order is right. A single flipped line on an
-  upright page is re-read with the classifier off and the better read kept.
+  rotated 180° so the reading order is right.
 - **Region filter**: regions below 0.5 confidence are dropped (counted in
   `dropped_regions`), separate from the 0.70 page gate.
 - **Clipped text**: narrow regions touching the photo's left/right edge (the
   facing page peeking in) are kept out of the text but retained in the JSONL
-  with `clipped: true`. `--keep-clipped` disables this.
-- **Detector threshold** 0.4 (`--box-thresh`): the engine default 0.5 missed
-  strongly curved lines at the top of a book page.
-
-## Layout heuristics
-
-Reading order is top-to-bottom, then left-to-right within a line band
-(0.6 × median line height); side-by-side pieces of one line split by page
-curl are rejoined. Headings are short lines, narrower than a body line, that
-are either notably taller than the body (`--heading-ratio`, 1.2) or centred
-on the body column.
-
-Columns (`--columns auto`, the default): a vertical gap in the middle of the
-page that almost no region crosses — at most a fifth of the text, such as a
-headline over both columns — at least a line height wide, with a few lines of
-several words on either side, splits the page into columns read left to
-right. A headline that crosses the gap is read on its own and splits the
-columns into the part above it and the part below. Photographed book pages
-have no such gap and stay one column, as do a contents list with its page
-numbers, a right-aligned attribution and ragged right edges; `--columns 1`
-turns the search off. Each column is grouped and judged for headings on its
-own; the running header or page number at the top of each column is stripped
-like any other furniture. A photo of a two-column page taken at an angle
-falls back to one column (the gap is searched as a vertical strip).
+  with `clipped: true`.
+- **Detector threshold** 0.4: the engine default 0.5 missed strongly curved
+  lines at the top of a book page.
+- **Running headers and footers**: short lines within the top or bottom 12%
+  of a page whose text, digits removed, recurs on at least two pages ("6 |
+  JOHN KOTTER…", a bare page number) are removed from the text and markdown
+  but kept in the JSONL with `role: header/footer`. A chapter title appears
+  once, so it is never stripped. Detection is job-wide, so a single-page
+  job never strips anything. Printed page numbers come from these lines.
+- **Reading order**: top-to-bottom, then left-to-right within a line band
+  (0.6 × median line height); side-by-side pieces of one line split by page
+  curl are rejoined. Headings are short lines, narrower than a body line,
+  that are either notably taller than the body (1.2×) or centred on the body
+  column. A vertical gap above the median line gap (1.6×) is a paragraph
+  break.
+- **Columns** (`auto`, the default): a vertical gap in the middle of the
+  page that almost no region crosses — at most a fifth of the text, such as
+  a headline over both columns — at least a line height wide, with a few
+  lines of several words on either side, splits the page into columns read
+  left to right. A headline that crosses the gap is read on its own and
+  splits the columns into the part above it and the part below.
+  Photographed book pages have no such gap and stay one column, as do a
+  contents list with its page numbers, a right-aligned attribution and
+  ragged right edges; `1` turns the search off. Each column is grouped and
+  judged for headings on its own; the page number at the top of each column
+  of a spread is stripped like any other furniture. A photo of a two-column
+  page taken at an angle falls back to one column.
 
 ## Using the pipeline from code
 
@@ -185,7 +208,8 @@ summary = run_job(
 )  # pause = return True
 ```
 
-`run_job` is synchronous and CPU-bound; call it from a worker thread.
+`run_job` is synchronous and CPU-bound; call it from a worker thread, as
+`app/worker.py` does.
 
 ## Development
 
@@ -193,19 +217,27 @@ summary = run_job(
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/python -m pytest -q
-.venv/bin/python tools/make_fixtures.py     # HEIC / PDF / EXIF / upside-down fixtures from Documents/
-.venv/bin/python tools/eval_models.py       # CER/WER of OCR configurations vs fixtures/reference/
-tools/api_smoke.sh Documents/                # the app end to end: add, read, kill -9, resume, export
+.venv/bin/uvicorn app.main:app --reload --port 8000     # the API alone; docs at /docs
+cd frontend && npm install && npm run dev               # the UI at :5173, proxying /api
+cd frontend && npm run build                            # -> app/static/, what usefultext-app serves
 ```
 
-CI (`.github/workflows/ci.yml`) runs the same checks on Ubuntu, Windows and macOS (Apple Silicon).
+Frontend checks: `npm run lint`, `npm run typecheck`, `npm test`. CI
+(`.github/workflows/ci.yml`) runs everything on Ubuntu, Windows and macOS.
+Other tools: `tools/make_fixtures.py` (HEIC / PDF / EXIF / upside-down
+fixtures from `Documents/`), `tools/eval_models.py` (CER/WER of OCR
+configurations against `fixtures/reference/`), `tools/api_smoke.sh` (the
+app end to end: add, read, kill -9, resume, export).
 
 ```
-usefultext/          the pipeline: ocr, preprocess, inputs, pipeline, layout, furniture, outputs, settings; cli.py
-app/                 the local app (Milestone 2): paths, desktop, launcher now; API, library, worker next
-tests/               pytest
-tools/               fixture derivation and the evaluation harness
-PROJECT_DOCS/        BRIEF.md (spec), HANDOVER.md (Milestone 1 record), PLAN_M2.md (Milestone 2 plan)
+usefultext/          the pipeline: ocr, preprocess, inputs, pipeline, layout, furniture, checks,
+                     corrections, spellcheck, outputs, docx_export, fileio, settings; cli.py
+app/                 the app: main (API), library, worker, spell, config, paths, desktop,
+                     launcher, window; static/ is the built UI
+frontend/            React 19, TypeScript, Vite, Tailwind, TanStack Query
+tests/               pytest; frontend tests are vitest
+tools/               fixture derivation, the evaluation harness, the API smoke test
+PROJECT_DOCS/        BRIEF.md (spec), HANDOVER.md (record), PLAN_M2.md (the app, step by step)
 ```
 
 `fixtures/reference/` holds hand-checked transcripts of the six sample
@@ -227,7 +259,7 @@ six sample pages (Intel Mac, CPU), 2026-09-09:
 The bundled default stays. The English-specific models are older
 generations and read worse; the medium models are 8× slower for no gain.
 
-Known v1 gaps (see the brief's v2 list): no deskew or perspective correction
+Known gaps (see the brief's v2 list): no deskew or perspective correction
 (so a two-column page photographed at an angle reads as one column),
 born-digital PDFs are OCR'd rather than read from their text layer, and page
 order cannot be recovered when files have random names and identical

@@ -1,11 +1,16 @@
-# PhotoText — Handover and Next Steps
+# UsefulText (was PhotoText) — Handover and Next Steps
 
-_Status as of 2026-09-10. Milestone 1 (CLI) is complete and calibrated on the
-sample photos; Milestone 2 (local app with web UI) is designed but not started.
-`BRIEF.md` remains the specification; this document records what was built,
-what was learned, and what to do next. Renamed UsefulText on 2026-09-10:
-step 0 of `PLAN_M2.md` turned `phototext/` into `usefultext/` and
-`doc_reader.py` into `usefultext/cli.py`; the names below are as they were._
+_Updated 2026-09-10, end of Milestone 2. Milestone 1 (the CLI) and Milestone
+2 (the app: FastAPI server, React UI, pywebview window) are complete at
+version 0.2.0, public at github.com/tuoa-tools/usefultext with CI green on
+Ubuntu, Windows and macOS. `BRIEF.md` remains the specification; `PLAN_M2.md`
+is the step-by-step record of the app (steps 0–5, each with what was found
+along the way) and should be read before this file for anything about the
+app. Sections 1–5 below are the Milestone 1 record as written on 2026-09-10,
+before the rename from PhotoText: `phototext/` is now `usefultext/`,
+`doc_reader.py` is `usefultext/cli.py`, and the pipeline has since gained
+`corrections.py`, `checks.py`, `spellcheck.py`, `docx_export.py`, `fileio.py`
+and column detection in `layout.py`. Section 6 is current._
 
 ## 1. State of the repository
 
@@ -139,30 +144,36 @@ Open:
 - pywebview spellcheck on Windows/Linux — check on a real machine in M3.
 - RAG: local stack stays offline; any hosted model is a per-document opt-in.
 
-## 6. Next steps, in order
+## 6. Next steps, in order (current)
 
-_Expanded on 2026-09-10 into `PLAN_M2.md` (steps 0–5, decisions to confirm,
-and the gaps this list left open). Read that first._
+Milestone 2 is done: steps 0–5 of `PLAN_M2.md`. What remains is Milestone 3,
+packaging, as the brief and `PLAN_M2.md` §6 describe:
 
-1. **Pipeline prep for the UI** (1–2 days): per-page preview JPEGs; explicit
-   job page list with exclude/replace; `corrections.json` overlay applied at
-   export; per-page provenance header and file naming; combined `.txt`;
-   duplicate-page and printed-number gap warnings in `JobSummary`.
-2. **Backend** (2–3 days): FastAPI app, job store over the library folder,
-   single worker thread, progress via polling or SSE (match
-   media_downloader), endpoints for add/order/start/pause/cancel/edit/export.
-3. **UI** (4–6 days): library, add-and-order view with thumbnails and
-   warnings, progress with quality chips, side-by-side editor with
-   spellcheck cycling, exports and copy-all, settings.
-4. **Spellcheck pass** (1 day): word list or pyspellchecker, custom
-   dictionary, suspect positions per line.
-5. **Milestone 3 packaging**: PyInstaller with onnxruntime DLLs collected,
-   rapidocr models bundled and pointed to via `PHOTOTEXT_MODEL_DIR`,
-   pillow-heif native libs, pywebview; GitHub Actions per platform as in
-   media_downloader v0.4.1; test on a machine without Python.
+1. **macOS build** (Adam's machine first): PyInstaller with onnxruntime and
+   pillow-heif collected, the RapidOCR models bundled and found through
+   `USEFULTEXT_MODEL_DIR`, pywebview (pyobjc) included, the built UI in
+   `app/static/`; a `.app` and a `.dmg`; bundle id `au.com.tuoa.usefultext`.
+   Prove it on a Mac without Python.
+2. **Windows build**: media_downloader's embeddable-Python route (Defender
+   is kinder to it than to PyInstaller), pip-installing the wheels so the
+   onnxruntime DLLs and pythonnet arrive on their own; an Inno Setup
+   installer. Check WebView2 is present or bundle its bootstrapper.
+3. **Linux build**: PyInstaller as for the Mac; WebKitGTK is a system
+   package, so the browser fallback matters there.
+4. **Release workflow**: GitHub Actions matrix like media_downloader's
+   `release.yml`, tagged releases with the three artefacts and notes.
+   Version comes from `usefultext.__version__`.
+5. **On real machines**: the pywebview spellcheck and file dialogs on
+   Windows and Linux, HEIC on Windows (pillow-heif wheel), a 80-photo
+   document end to end on a slow laptop.
+
+Things left open on purpose: a PyPI package (would need the built UI inside
+the wheel; not wanted for now), a sponsor link (`FUNDING.yml`, any time),
+deskew.
 
 ## 7. Parking lot (v2)
 
-Deskew/perspective correction; two-column detection; reading born-digital
-PDFs from their text layer instead of OCR; search across the library;
-table detection (resist); local RAG over the JSONL.
+Deskew/perspective correction (also what a two-column page photographed at
+an angle needs — it falls back to one column now); reading born-digital PDFs
+from their text layer instead of OCR; search across the library; table
+detection (resist); local RAG over the JSONL.

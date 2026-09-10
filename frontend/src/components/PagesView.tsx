@@ -12,6 +12,7 @@ import {
   type Page,
 } from '../api';
 import { ACCEPT, filesFromDataTransfer, filesFromInput } from '../lib/files';
+import { useNativeDialogs } from '../lib/native';
 import { plural, quality } from '../lib/format';
 import { moveItem } from '../lib/pages';
 import type { Route } from '../lib/route';
@@ -46,6 +47,13 @@ export default function PagesView({
       addPath(doc.id, path, move),
     onSuccess: invalidate,
   });
+  /** Paths from the window's dialogs, one at a time; copied or moved as Settings says. */
+  const addPaths = useMutation({
+    mutationFn: async (paths: string[]) => {
+      for (const p of paths) await addPath(doc.id, p, null);
+    },
+    onSuccess: invalidate,
+  });
   const adopt = useMutation({
     mutationFn: (files: string[]) => adoptFiles(doc.id, files),
     onSuccess: invalidate,
@@ -68,7 +76,8 @@ export default function PagesView({
     if (window.confirm(`Remove ${page.label} from the document? The photo stays in the folder.`))
       update(pages.filter((p) => p.id !== page.id));
   };
-  const error = add.error ?? addFolder.error ?? adopt.error ?? order.error ?? sort.error;
+  const error =
+    add.error ?? addFolder.error ?? addPaths.error ?? adopt.error ?? order.error ?? sort.error;
 
   return (
     <div className="space-y-4">
@@ -78,6 +87,7 @@ export default function PagesView({
         </p>
       ) : (
         <AddArea
+          onPaths={(paths) => addPaths.mutate(paths)}
           pending={add.isPending || addFolder.isPending}
           onFiles={(files) => add.mutate({ files })}
           onFolder={(path, move) => addFolder.mutate({ path, move })}
@@ -179,13 +189,16 @@ function AddArea({
   pending,
   onFiles,
   onFolder,
+  onPaths,
   defaultMove,
 }: {
   pending: boolean;
   onFiles: (files: File[]) => void;
   onFolder: (path: string, move: boolean | null) => void;
+  onPaths: (paths: string[]) => void;
   defaultMove: boolean;
 }) {
+  const native = useNativeDialogs();
   const input = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
@@ -224,8 +237,10 @@ function AddArea({
           {pending ? 'Adding to your library…' : 'Drop page photos here, or click to choose them'}
         </p>
         <p className="text-sm text-slate-500">
-          JPEG, PNG, HEIC, TIFF, WebP or PDF — or a whole folder. They are copied into this
-          document’s folder.
+          JPEG, PNG, HEIC, TIFF, WebP or PDF — or a whole folder.{' '}
+          {native
+            ? `Files chosen below are ${defaultMove ? 'moved' : 'copied'} into this document’s folder (Settings decides which); dropped ones are copied.`
+            : 'They are copied into this document’s folder.'}
         </p>
         <input
           ref={input}
@@ -254,21 +269,38 @@ function AddArea({
         <button
           type="button"
           className="text-blue-700 hover:underline"
-          onClick={() => folderInput.current?.click()}
+          onClick={async () => {
+            if (!native) return folderInput.current?.click();
+            const chosen = await native.pick_folder();
+            if (chosen) onPaths([chosen]);
+          }}
         >
           Choose a folder…
         </button>
-        <button
-          type="button"
-          className="text-blue-700 hover:underline"
-          onClick={() => setShowFolder((v) => !v)}
-        >
-          {showFolder
-            ? 'Hide the path box'
-            : 'Or type a folder’s path (the only way to move rather than copy)…'}
-        </button>
+        {native ? (
+          <button
+            type="button"
+            className="text-blue-700 hover:underline"
+            onClick={async () => {
+              const chosen = await native.pick_files();
+              if (chosen.length) onPaths(chosen);
+            }}
+          >
+            Choose photos or PDFs…
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="text-blue-700 hover:underline"
+            onClick={() => setShowFolder((v) => !v)}
+          >
+            {showFolder
+              ? 'Hide the path box'
+              : 'Or type a folder’s path (the only way to move rather than copy)…'}
+          </button>
+        )}
       </div>
-      {showFolder && (
+      {showFolder && !native && (
         <form
           className="flex flex-wrap items-center gap-2 rounded-md bg-white p-3 shadow-sm"
           onSubmit={(e) => {
