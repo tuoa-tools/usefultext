@@ -340,11 +340,38 @@ function useViewportHeight(): [RefObject<HTMLDivElement | null>, number | null] 
   return [ref, value];
 }
 
+const ZOOM_KEY = 'usefultext.lineZoom';
+const ZOOM_STEP = 1.25;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 6;
+
+/** The strip's magnification over its automatic fit, remembered per browser. */
+function storedZoom(): number {
+  try {
+    const v = Number(localStorage.getItem(ZOOM_KEY));
+    return v >= ZOOM_MIN && v <= ZOOM_MAX ? v : 1;
+  } catch {
+    return 1;
+  }
+}
+
 /** The selected line's own patch of the photo, magnified, with a line or so of
- *  context above and below — so a line can be checked without scrolling the page. */
+ *  context above and below — so a line can be checked without scrolling the page.
+ *  The fit shows the line's full width; the +/− buttons override it for tiny print
+ *  or a wide line on a dense page. */
 function LineZoom({ page, lineIndex }: { page: PageDetail; lineIndex: number | null }) {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
+  const [zoom, setZoom] = useState(storedZoom);
+  const changeZoom = (factor: number) => {
+    const next = factor === 0 ? 1 : clamp(zoom * factor, ZOOM_MIN, ZOOM_MAX);
+    setZoom(next);
+    try {
+      localStorage.setItem(ZOOM_KEY, String(next));
+    } catch {
+      /* a private window, or storage blocked: the zoom just isn't remembered */
+    }
+  };
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -373,7 +400,8 @@ function LineZoom({ page, lineIndex }: { page: PageDetail; lineIndex: number | n
   const boxW = x1 - x0;
   // Show the line's full width plus a margin, but never magnify past about three times
   // the full-page fit (a two-word heading would otherwise fill the strip with one letter).
-  const viewW = Math.min(pageW, Math.max(boxW * 1.1 + pageW * 0.02, pageW * 0.35));
+  const fitW = Math.min(pageW, Math.max(boxW * 1.1 + pageW * 0.02, pageW * 0.35));
+  const viewW = clamp(fitW / zoom, pageW * 0.05, pageW);
   const scale = width / viewW;
   const viewH = height / scale;
   const left = clamp((x0 + x1) / 2 - viewW / 2, 0, Math.max(0, pageW - viewW));
@@ -407,6 +435,38 @@ function LineZoom({ page, lineIndex }: { page: PageDetail; lineIndex: number | n
               height: (y1 - y0) * scale,
             }}
           />
+          <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
+            {zoom !== 1 && (
+              <button
+                type="button"
+                title="Back to the automatic fit"
+                className="rounded bg-white/85 px-1.5 py-0.5 text-xs text-slate-700 shadow hover:bg-white"
+                onClick={() => changeZoom(0)}
+              >
+                fit
+              </button>
+            )}
+            <button
+              type="button"
+              aria-label="Zoom out"
+              title="Zoom out"
+              disabled={zoom <= ZOOM_MIN}
+              className="rounded bg-white/85 px-1.5 py-0.5 text-xs text-slate-700 shadow hover:bg-white disabled:opacity-40"
+              onClick={() => changeZoom(1 / ZOOM_STEP)}
+            >
+              −
+            </button>
+            <button
+              type="button"
+              aria-label="Zoom in"
+              title="Zoom in"
+              disabled={zoom >= ZOOM_MAX}
+              className="rounded bg-white/85 px-1.5 py-0.5 text-xs text-slate-700 shadow hover:bg-white disabled:opacity-40"
+              onClick={() => changeZoom(ZOOM_STEP)}
+            >
+              +
+            </button>
+          </div>
         </>
       )}
     </div>

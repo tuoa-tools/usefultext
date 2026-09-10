@@ -22,11 +22,11 @@ python3.13 -m venv .venv && .venv/bin/pip install -e .
 
 | File | Contents |
 |---|---|
-| `pages/page_NNN_<photo>.txt` | plain text per page in reading order, named by position then photo; the first line is a bracketed provenance note (`[page 3 of 12 · IMG_0042.jpg · read quality 0.98 · rotated 90°]`), followed by any quality notes, a blank line, then the text |
+| `pages/page_NNN_<photo>.txt` | plain text per page in reading order, named by position then photo; the first line is a bracketed provenance note (`[page 3 of 12 · IMG_0042.jpg · read quality 0.98 · rotated 90° · 2 columns]`), followed by any quality notes, a blank line, then the text |
 | `document.md` | all pages with `## Page N` markers, best-effort `##` headings, paragraph breaks, and a `> ⚠` note on pages that read poorly |
 | `document.txt` | all pages as plain text with `--- page N (photo) ---` separators |
-| `document.jsonl` | one line per text region: `page, page_id, printed_page, source, line, order, role (body/header/footer), text, conf, bbox, clipped, low_conf_page, corrected, corrected_line` (bbox in full-resolution pixels of the upright page; `text` is always the raw OCR) |
-| `report.csv` | per page: `id, filename, printed_page, regions, mean_conf, low_conf, sharpness, blurry, rotation, dropped_regions, clipped_regions, furniture_lines, corrected_lines, elapsed_s, status, error, preview` |
+| `document.jsonl` | one line per text region: `page, page_id, printed_page, source, line, order, role (body/header/footer), column (0 = full width), text, conf, bbox, clipped, low_conf_page, corrected, corrected_line` (bbox in full-resolution pixels of the upright page; `text` is always the raw OCR) |
+| `report.csv` | per page: `id, filename, printed_page, regions, mean_conf, low_conf, sharpness, blurry, rotation, columns, dropped_regions, clipped_regions, furniture_lines, corrected_lines, elapsed_s, status, error, preview` |
 | `previews/<id>.jpg` | an upright JPEG of each page (1600 px long edge), rotated as the read decided — what the app's editor shows; `--no-previews` skips them |
 | `state.json` | job state; a re-run skips pages already read (use `--force` to redo) |
 | `corrections.json` | a person's edits (see below); never written by the pipeline |
@@ -155,7 +155,20 @@ Reading order is top-to-bottom, then left-to-right within a line band
 (0.6 × median line height); side-by-side pieces of one line split by page
 curl are rejoined. Headings are short lines, narrower than a body line, that
 are either notably taller than the body (`--heading-ratio`, 1.2) or centred
-on the body column. Single-column only; running headers/footers are kept.
+on the body column.
+
+Columns (`--columns auto`, the default): a vertical gap in the middle of the
+page that almost no region crosses — at most a fifth of the text, such as a
+headline over both columns — at least a line height wide, with a few lines of
+several words on either side, splits the page into columns read left to
+right. A headline that crosses the gap is read on its own and splits the
+columns into the part above it and the part below. Photographed book pages
+have no such gap and stay one column, as do a contents list with its page
+numbers, a right-aligned attribution and ragged right edges; `--columns 1`
+turns the search off. Each column is grouped and judged for headings on its
+own; the running header or page number at the top of each column is stripped
+like any other furniture. A photo of a two-column page taken at an angle
+falls back to one column (the gap is searched as a vertical strip).
 
 ## Using the pipeline from code
 
@@ -214,7 +227,8 @@ six sample pages (Intel Mac, CPU), 2026-09-09:
 The bundled default stays. The English-specific models are older
 generations and read worse; the medium models are 8× slower for no gain.
 
-Known v1 gaps (see the brief's v2 list): no deskew or perspective correction,
-no two-column detection, born-digital PDFs are OCR'd rather than read from
-their text layer, and page order cannot be recovered when files have random
-names and identical timestamps.
+Known v1 gaps (see the brief's v2 list): no deskew or perspective correction
+(so a two-column page photographed at an angle reads as one column),
+born-digital PDFs are OCR'd rather than read from their text layer, and page
+order cannot be recovered when files have random names and identical
+timestamps.

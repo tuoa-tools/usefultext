@@ -7,6 +7,7 @@ import {
   saveSettings,
   type AddMode,
   type AppSettings,
+  type Columns,
 } from '../api';
 import { compactInputClass } from '../lib/ui';
 import ErrorText from './ErrorText';
@@ -78,6 +79,7 @@ function SettingsForm({ initial, onSaved }: { initial: AppSettings; onSaved?: ()
   const [pdfDpi, setPdfDpi] = useState(String(initial.pdf_dpi));
   const [minConf, setMinConf] = useState(String(initial.min_page_conf));
   const [blur, setBlur] = useState(String(initial.blur_threshold));
+  const [columns, setColumns] = useState<Columns>(initial.columns ?? 'auto');
 
   const save = useMutation({
     mutationFn: () =>
@@ -87,6 +89,7 @@ function SettingsForm({ initial, onSaved }: { initial: AppSettings; onSaved?: ()
         pdf_dpi: Number(pdfDpi),
         min_page_conf: Number(minConf),
         blur_threshold: Number(blur),
+        columns,
       }),
     onSuccess: () => {
       qc.invalidateQueries();
@@ -126,6 +129,24 @@ function SettingsForm({ initial, onSaved }: { initial: AppSettings; onSaved?: ()
             {mode === 'copy' ? 'Copy them into the library' : 'Move them into the library'}
           </label>
         ))}
+      </fieldset>
+      <fieldset>
+        <legend className="text-sm font-medium">Columns</legend>
+        {(['auto', '1'] as Columns[]).map((mode) => (
+          <label key={mode} className="mr-4 inline-flex items-center gap-1.5 text-sm">
+            <input
+              type="radio"
+              name="columns"
+              checked={columns === mode}
+              onChange={() => setColumns(mode)}
+            />
+            {mode === 'auto' ? 'Split a page at a clear gap between columns' : 'Always one column'}
+          </label>
+        ))}
+        <span className="block text-xs text-slate-500">
+          Magazines and reports set text in columns; photographed book pages don’t. Applies to
+          pages read from now on — “Read again” re-reads the ones already done.
+        </span>
       </fieldset>
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="block">

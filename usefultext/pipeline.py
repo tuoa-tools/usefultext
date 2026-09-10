@@ -28,6 +28,7 @@ from .inputs import PageSource
 from .layout import (
     Line,
     clipped_at_edge,
+    column_count,
     layout_page,
     render_markdown,
     render_text,
@@ -65,6 +66,7 @@ class PageRecord:
     width: int = 0  # oriented page size at full resolution
     height: int = 0
     rotation: int = 0  # degrees CCW applied on top of EXIF orientation
+    columns: int = 1  # text columns found on the page (see layout.find_gutters)
     scale: float = 1.0  # inference size / full size
     trials: dict = field(default_factory=dict)  # rotation → score, when tried
     weak_reason: str = ""
@@ -83,7 +85,7 @@ class PageRecord:
     text: str = ""  # everything read, in reading order
     lines: list = field(
         default_factory=list
-    )  # [{"text", "heading", "furniture", "regions": [idx...]}]
+    )  # [{"text", "heading", "para_break_before", "column", "furniture", "regions": [idx...]}]
     regions: list = field(default_factory=list)  # [OcrRegion.to_dict() + "clipped"] full-res coords
 
     preview: str = ""  # upright JPEG, relative to the output folder ("previews/<id>.jpg")
@@ -111,6 +113,7 @@ class PageRecord:
                 [regs[i] for i in ln["regions"]],
                 heading=ln.get("heading", False),
                 para_break_before=ln.get("para_break_before", False),
+                column=ln.get("column", 0),
             )
             out.append(line)
         return out
@@ -322,12 +325,17 @@ def process_page(
     kept = [r for i, r in enumerate(regions) if i not in clipped]
     lines = layout_page(
         kept,
+        columns=settings.columns,
         band_factor=settings.line_band_factor,
         heading_height_ratio=settings.heading_height_ratio,
         heading_max_chars=settings.heading_max_chars,
         heading_max_width_ratio=settings.heading_max_width_ratio,
         paragraph_gap_factor=settings.paragraph_gap_factor,
+        column_min_gap=settings.column_min_gap,
+        column_min_lines=settings.column_min_lines,
+        column_max_cross=settings.column_max_cross,
     )
+    rec.columns = column_count(lines)
 
     index_of = {id(r): i for i, r in enumerate(regions)}
     rec.regions = [dict(r.to_dict(), clipped=(i in clipped)) for i, r in enumerate(regions)]
@@ -336,6 +344,7 @@ def process_page(
             "text": ln.text,
             "heading": ln.heading,
             "para_break_before": ln.para_break_before,
+            "column": ln.column,
             "regions": [index_of[id(r)] for r in ln.regions],
         }
         for ln in lines

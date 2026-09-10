@@ -31,6 +31,7 @@ function page(
       blurry: false,
       sharpness: 90,
       rotation: 0,
+      columns: 1,
       printed_page: null,
       n_regions: 3,
       n_lines: 3,

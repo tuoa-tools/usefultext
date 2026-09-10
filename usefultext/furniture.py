@@ -83,6 +83,18 @@ def _line_rel_y(record, line: dict) -> float | None:
     return (sum(ys) / len(ys)) / record.height if ys else None
 
 
+def _column_runs(lines: list[dict]) -> list[tuple[int, int]]:
+    """Index ranges of consecutive lines in the same column: one run on a
+    single-column page; on a two-column page each column (and each
+    full-width band) has its own top and bottom, where its furniture sits."""
+    runs, start = [], 0
+    for i in range(1, len(lines) + 1):
+        if i == len(lines) or lines[i].get("column", 0) != lines[start].get("column", 0):
+            runs.append((start, i))
+            start = i
+    return runs
+
+
 def candidates(
     record, band: float = 0.12, max_chars: int = 60, max_lines_each_end: int = 2
 ) -> list[Candidate]:
@@ -90,11 +102,13 @@ def candidates(
     if not lines:
         return []
     out: list[Candidate] = []
-    n = len(lines)
-    ends = [(i, "top") for i in range(min(max_lines_each_end, n))]
-    ends += [
-        (i, "bottom") for i in range(max(n - max_lines_each_end, 0), n) if (i, "top") not in ends
-    ]
+    ends: list[tuple[int, str]] = []
+    for a, b in _column_runs(lines):
+        top = [(i, "top") for i in range(a, min(a + max_lines_each_end, b))]
+        ends += top
+        ends += [
+            (i, "bottom") for i in range(max(b - max_lines_each_end, a), b) if (i, "top") not in top
+        ]
     for i, position in ends:
         line = lines[i]
         text = line.get("text", "").strip()

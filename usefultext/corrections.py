@@ -133,11 +133,19 @@ def overlay(rec, *, skip_furniture: bool = True, corrections: Corrections | None
     marks); an empty one drops the line."""
     live = corrections.live(rec) if corrections else {}
     out: list[TextLine] = []
+    inherited: bool | None = None  # a stripped column-top line's break, for the next line
     for i, ln in enumerate(rec.lines):
         if skip_furniture and ln.get("furniture"):
+            # A page number at the top of a column, stripped: the line after it now
+            # starts the column, so it takes the column's own break (none between the
+            # columns of one band) rather than the gap-based one it got from the number.
+            if i == 0 or rec.lines[i - 1].get("column", 0) != ln.get("column", 0):
+                inherited = bool(ln.get("para_break_before", False))
             continue
         heading = bool(ln.get("heading", False))
         brk = bool(ln.get("para_break_before", False))
+        if inherited is not None:
+            brk, inherited = inherited, None
         corr = live.get(i)
         if corr is None:
             out.append(TextLine(ln.get("text", ""), heading, brk, "ocr", i))

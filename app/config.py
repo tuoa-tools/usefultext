@@ -20,6 +20,7 @@ class AppConfig:
     pdf_dpi: int = 200
     min_page_conf: float = 0.70
     blur_threshold: float = 65.0
+    columns: str = "auto"  # auto = split a page at a clear gutter; "1" = always one column
 
     def pipeline_overrides(self) -> dict:
         """The subset that maps onto usefultext.Settings."""
@@ -27,6 +28,7 @@ class AppConfig:
             "pdf_dpi": self.pdf_dpi,
             "min_page_conf": self.min_page_conf,
             "blur_threshold": self.blur_threshold,
+            "columns": self.columns,
         }
 
     @classmethod

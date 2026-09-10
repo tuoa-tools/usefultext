@@ -453,6 +453,7 @@ export function PageChips({ page }: { page: Page }) {
           <Chip tone={r.low_conf ? 'red' : 'green'}>read quality {quality(r.mean_conf)}</Chip>
           {r.blurry && <Chip tone="amber">looks blurry</Chip>}
           {r.rotation ? <Chip tone="grey">rotated {r.rotation}°</Chip> : null}
+          {r.columns > 1 && <Chip tone="grey">{r.columns} columns</Chip>}
           {r.printed_page !== null && <Chip tone="grey">printed p. {r.printed_page}</Chip>}
           {r.corrected > 0 && <Chip tone="blue">{plural(r.corrected, 'line')} corrected</Chip>}
           {r.stale > 0 && <Chip tone="amber">{plural(r.stale, 'correction')} to check</Chip>}

@@ -73,3 +73,23 @@ def test_order_by_printed_page_without_numbers_is_unchanged():
     sources = [source("a"), source("b")]
     ordered, notes = order_by_printed_page(sources, {})
     assert [s.key for s in ordered] == ["a", "b"] and notes
+
+
+def test_page_numbers_at_the_top_of_each_column_of_a_spread():
+    # A magazine spread read as two columns: "28" tops the left column and
+    # "29" the right one, so each column's own ends are furniture candidates.
+    def spread(n):
+        left = [(f"left {i}", 300 + i * 60, False) for i in range(8)]
+        right = [(f"right {i}", 300 + i * 60, False) for i in range(8)]
+        p = page([(str(n), 120, False)] + left + [(str(n + 1), 120, False)] + right)
+        for ln in p.lines[:9]:
+            ln["column"] = 1
+        for ln in p.lines[9:]:
+            ln["column"] = 2
+        return p
+
+    first, second = spread(28), spread(30)
+    detect_furniture([first, second])
+    assert first.lines[0]["furniture"] and first.lines[9]["furniture"]
+    assert not any(ln["furniture"] for ln in first.lines[1:9])
+    assert (first.printed_page, second.printed_page) == (28, 30)

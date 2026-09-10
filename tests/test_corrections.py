@@ -75,3 +75,24 @@ def test_roundtrip_and_missing_file(tmp_path):
     assert Corrections.load(tmp_path / "nowhere").total() == 0
     (tmp_path / CORRECTIONS_FILE).write_text("{not json", encoding="utf-8")
     assert Corrections.load(tmp_path).total() == 0  # corrupt file never blocks a run
+
+
+def test_stripped_column_top_line_hands_its_break_to_the_next_line(make_record):
+    # A spread read as two columns: "28" tops the left column, "29" the right.
+    # The gap under each number gave the next line a paragraph break; once the
+    # numbers are stripped, the right column must still follow the left one
+    # without a blank line (prose flows across the gutter).
+    rec = make_record(
+        lines=[("28", 100), ("left one", 300), ("left two", 340), ("29", 100), ("right one", 300)]
+    )
+    for i, ln in enumerate(rec.lines):
+        ln["column"] = 1 if i < 3 else 2
+    rec.lines[0]["furniture"] = rec.lines[3]["furniture"] = True
+    rec.lines[1]["para_break_before"] = rec.lines[4]["para_break_before"] = True
+    assert rec.body_text() == "left one\nleft two\nright one"
+    # A stripped line that starts a new band (full width) passes its own break on.
+    rec.lines[3]["column"] = 0
+    rec.lines[3]["para_break_before"] = True
+    rec.lines[4]["column"] = 0
+    rec.lines[4]["para_break_before"] = False
+    assert rec.body_text() == "left one\nleft two\n\nright one"

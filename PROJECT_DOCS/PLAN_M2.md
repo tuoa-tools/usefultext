@@ -454,24 +454,55 @@ printout and otherwise behaves as before.
       at a line's top or bottom move to the neighbouring line.
 - Done when: met — 58 backend tests, 11 frontend tests.
 
-### Step 4½ — two-column pages (found 2026-09-10, not yet scheduled)
+### Step 4½ — two-column pages (found 2026-09-10) — done 2026-09-10
 
-Adam's magazine PDF (two columns) reads with the columns interleaved: the
-line grouper joins regions that share a vertical band across the gutter,
+Adam's magazine PDF (two columns) read with the columns interleaved: the
+line grouper joined regions that share a vertical band across the gutter,
 so "Corporate boards sit at roughly 35% female in Australia — deemed out"
-runs straight into the other column. The brief set single-column for v1;
-the region boxes make a split feasible: find a vertical gap in the middle
-of the page that no kept region crosses (over most of the page's height),
-lay out each side separately, read left column then right. Estimate ½–1
-day with a two-column fixture; a `columns: auto|1` setting; the eval
-harness must stay at 0.67% on the single-column samples.
+ran straight into the other column. The brief set single-column for v1;
+the region boxes made a split feasible.
 
-Related, parked until the columns are sorted (Adam, 2026-09-10): on that
-PDF the magnified strip cannot make the text readable, because an
-interleaved "line" spans the whole page width and the strip shows it at
-page-fit scale. Column-width lines should fix the common case (about 2×);
-for edge cases — tiny print, a wide line on a dense page — consider a
-manual zoom on the strip (a slider or +/− that overrides the fit).
+- [x] `layout.find_gutters`: a projection profile over x (bins of ¼ the
+      median region height, each summing the heights of the regions that
+      cross it). A gutter is a run of bins crossed by at most 20% of the
+      text, at least one line height wide, with at least three regions
+      centred on either side whose median width is a few words — so a
+      column of page numbers beside a contents list, a right-aligned
+      attribution or a ragged right edge never makes a column.
+      `split_blocks`: a region that crosses a gutter (a headline) is full
+      width and splits the columns into the band above and the band below;
+      every other region goes to the column its centre is nearest. Blocks
+      are read band by band, columns left to right; each column is grouped
+      and judged for headings on its own medians; a paragraph break at
+      every band boundary, none between the columns of one band. A
+      full-width line is a heading on height alone (it is wide by
+      definition). `Line.column` (0 = full width) is stored per line,
+      `PageRecord.columns` per page, `column` on JSONL rows, `columns` in
+      report.csv, "2 columns" in the provenance line and the page chip.
+- [x] `Settings.columns` auto|1 (+ `column_min_gap`, `column_min_lines`,
+      `column_max_cross`); CLI `--columns`; app setting and per-document
+      override; Settings dialog radio ("applies to pages read from now on").
+- [x] Furniture: candidates are the first/last two lines of each column
+      run, so "28" and "29" at the two tops of a spread are both stripped
+      and the spread is printed page 28; a stripped column-top line hands
+      its paragraph break to the line after it (corrections.overlay), so
+      the columns still join without a blank line.
+- [x] The strip's manual zoom (parked item): +/− buttons and "fit" on the
+      magnified strip, ×1.25 per step between ½× and 6× of the automatic
+      fit, remembered in the browser.
+- [x] Tests: synthetic two-column pages (headline, mid-page full-width
+      heading, forced single column, dialogue-width lines, contents-list
+      numbers, right-aligned attribution), the real engine on a born-digital
+      two-column PDF made at test time, column-top page numbers in
+      furniture, the overlay hand-over, the API setting. 68 backend tests.
+- Done: the harness stays at 0.67% CER on the six single-column pages (no
+  gutter is found on any of them); the magazine PDF reads left column then
+  right on both spreads, "28"/"29"/"30" stripped, one printed-number gap
+  warning at 29 (a spread is one PDF page). Two things left as they are:
+  the title spread (six regions, fewer than a column needs) still reads
+  "OBSERVATIONS ON switching" across the gutter, and a skewed photo of a
+  two-column page falls back to one column, since the gutter is searched
+  as a vertical strip (deskew is parked with Milestone 3's list).
 
 ### Step 5 — window and shutdown (½–1 day)
 
@@ -535,5 +566,5 @@ media_downloader's embeddable-Python route again because of Defender, and
 that route pip-installs the onnxruntime and pillow-heif wheels, so their
 DLLs arrive without any collection step — the Mac PyInstaller build is the
 one that needs hooks. Test order: Mac first, then Windows, then Linux. The parking lot is
-unchanged: deskew, two-column, born-digital PDF text layer, search across
-the library, tables, local RAG.
+unchanged: deskew, born-digital PDF text layer, search across the library,
+tables, local RAG (two-column pages were done in step 4½).

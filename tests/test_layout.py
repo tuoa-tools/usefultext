@@ -1,3 +1,5 @@
+import pytest
+
 from usefultext.layout import (
     group_lines,
     layout_page,
@@ -120,3 +122,126 @@ def test_clipped_regions_at_photo_edge():
     regions = body + sliver + [page_number]
     idx = clipped_at_edge(regions, image_width=1200)
     assert idx == set(range(6, 10))
+
+
+# --------------------------------------------------------------------------- #
+# Columns
+# --------------------------------------------------------------------------- #
+def two_column_page(headline=True, rows=12, split_at=None):
+    """Two ragged-right columns of `rows` lines (28 px tall, 40 px pitch), a
+    headline across both, and optionally a full-width heading between row
+    `split_at - 1` and row `split_at`."""
+    regions = []
+    if headline:
+        regions.append(box(100, 150, 800, 70, "A Headline Over Both Columns"))
+    for i in range(rows):
+        y = 300 + i * 40 + (80 if split_at is not None and i >= split_at else 0)
+        regions.append(box(100, y, 380 - (i % 3) * 40, 28, f"left {i}"))
+        regions.append(box(560, y, 380 - (i % 4) * 30, 28, f"right {i}"))
+    if split_at is not None:
+        regions.append(box(100, 300 + split_at * 40 + 5, 800, 40, "Section Two"))
+    return regions
+
+
+def test_two_columns_read_left_then_right():
+    from usefultext.layout import column_count, find_gutters
+
+    regions = two_column_page()
+    assert len(find_gutters(regions)) == 1
+    lines = layout_page(regions)
+    texts = [ln.text for ln in lines]
+    assert texts[0] == "A Headline Over Both Columns"
+    assert lines[0].heading and lines[0].column == 0
+    assert texts[1:13] == [f"left {i}" for i in range(12)]
+    assert texts[13:] == [f"right {i}" for i in range(12)]
+    assert {ln.column for ln in lines[1:13]} == {1}
+    assert {ln.column for ln in lines[13:]} == {2}
+    # A break after the headline, none between the columns (prose flows across).
+    assert lines[1].para_break_before and not lines[13].para_break_before
+    assert column_count(lines) == 2
+
+
+def test_columns_setting_1_keeps_one_column():
+    from usefultext.layout import column_count
+
+    lines = layout_page(two_column_page(), columns="1")
+    assert lines[1].text == "left 0 right 0"
+    assert column_count(lines) == 1
+
+
+def test_full_width_heading_mid_page_reads_columns_above_it_first():
+    lines = layout_page(two_column_page(headline=False, rows=12, split_at=6))
+    texts = [ln.text for ln in lines]
+    expected = (
+        [f"left {i}" for i in range(6)]
+        + [f"right {i}" for i in range(6)]
+        + ["Section Two"]
+        + [f"left {i}" for i in range(6, 12)]
+        + [f"right {i}" for i in range(6, 12)]
+    )
+    assert texts == expected
+    heading = lines[12]
+    assert heading.heading and heading.column == 0 and heading.para_break_before
+    assert lines[13].para_break_before  # the band after the heading
+    assert not lines[6].para_break_before  # right column of the same band
+
+
+def test_short_lines_in_one_column_are_not_columns():
+    from usefultext.layout import column_count, find_gutters
+
+    # Dialogue: lines of many widths, all starting at the left margin.
+    regions = [box(100, 100 + i * 40, 200 + (i * 137) % 600, 28, f"line {i}") for i in range(20)]
+    assert find_gutters(regions) == []
+    lines = layout_page(regions)
+    assert [ln.text for ln in lines] == [f"line {i}" for i in range(20)]
+    assert column_count(lines) == 1
+
+
+def test_page_numbers_beside_a_contents_list_are_not_a_column():
+    from usefultext.layout import find_gutters
+
+    titles = [box(100, 100 + i * 40, 500, 28, f"Chapter {i}") for i in range(8)]
+    numbers = [box(800, 100 + i * 40, 30, 28, str(3 + i * 7)) for i in range(8)]
+    regions = titles + numbers
+    assert find_gutters(regions) == []
+    lines = layout_page(regions)
+    assert lines[0].text == "Chapter 0 3"
+
+
+def test_a_few_right_aligned_lines_are_not_a_column():
+    from usefultext.layout import find_gutters
+
+    body = [box(100, 100 + i * 40, 600, 28, f"body {i}") for i in range(10)]
+    attribution = [box(560, 520 + i * 40, 240, 28, f"— Author {i}") for i in range(2)]
+    assert find_gutters(body + attribution) == []
+
+
+def test_two_columns_on_a_born_digital_pdf(tmp_path):
+    """The real engine on a rendered two-column page: read left column, then right."""
+    pymupdf = pytest.importorskip("pymupdf")
+    from usefultext import ocr
+    from usefultext.inputs import PageSource
+    from usefultext.pipeline import process_page
+    from usefultext.settings import Settings
+
+    if not ocr.available():
+        pytest.skip(f"OCR engine unavailable: {ocr.import_error()}")
+    left = " ".join(f"alpha{i} lorem ipsum dolor sit amet" for i in range(14))
+    right = " ".join(f"beta{i} consectetur adipiscing elit sed" for i in range(14))
+    pdf = pymupdf.open()
+    page = pdf.new_page(width=595, height=842)
+    page.insert_textbox(pymupdf.Rect(60, 60, 535, 110), "Two Columns", fontsize=24, fontname="hebo")
+    page.insert_textbox(pymupdf.Rect(60, 130, 285, 800), left, fontsize=11, fontname="helv")
+    page.insert_textbox(pymupdf.Rect(310, 130, 535, 800), right, fontsize=11, fontname="helv")
+    path = tmp_path / "two_columns.pdf"
+    pdf.save(path)
+    pdf.close()
+
+    rec = process_page(PageSource(path, 0), Settings())
+    assert rec.status == "done" and rec.columns == 2
+    texts = [ln["text"] for ln in rec.lines]
+    assert texts[0].lower().startswith("two columns") and rec.lines[0]["heading"]
+    alphas = [i for i, t in enumerate(texts) if "alpha" in t]
+    betas = [i for i, t in enumerate(texts) if "beta" in t]
+    assert alphas and betas and max(alphas) < min(betas)
+    assert not any("alpha" in t and "beta" in t for t in texts)

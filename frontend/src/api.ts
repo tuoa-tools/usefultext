@@ -21,6 +21,8 @@ export interface Health {
 }
 
 export type AddMode = 'copy' | 'move';
+/** How pages are laid out when read: split at a clear gutter, or always one column. */
+export type Columns = 'auto' | '1';
 
 export interface AppSettings {
   library_dir: string | null;
@@ -29,6 +31,7 @@ export interface AppSettings {
   pdf_dpi: number;
   min_page_conf: number;
   blur_threshold: number;
+  columns: Columns;
   default_library_dir: string;
   /** The pipeline's calibrated defaults, for "reset" hints. */
   defaults: Record<string, unknown>;
@@ -105,6 +108,8 @@ export interface PageRead {
   blurry: boolean;
   sharpness: number;
   rotation: number;
+  /** Text columns found on the page; 2 or more means it was read column by column. */
+  columns: number;
   printed_page: number | null;
   n_regions: number;
   n_lines: number;
@@ -141,7 +146,7 @@ export interface JobWarning {
 }
 
 export interface Document extends DocumentSummary {
-  settings: Record<string, number>;
+  settings: Record<string, number | string>;
   pages: Page[];
   warnings: JobWarning[];
   stray_files: string[];
@@ -261,7 +266,13 @@ export const revealDocument = (id: string) =>
 export const getDocument = (id: string) => request<Document>('GET', `/api/documents/${id}`);
 export const updateDocument = (
   id: string,
-  body: { title?: string; pdf_dpi?: number; min_page_conf?: number; blur_threshold?: number }
+  body: {
+    title?: string;
+    pdf_dpi?: number;
+    min_page_conf?: number;
+    blur_threshold?: number;
+    columns?: Columns;
+  }
 ) => request<Document>('PUT', `/api/documents/${id}`, body);
 
 /** The drop zone: the browser sends the bytes, so this is always a copy. */

@@ -72,6 +72,13 @@ def build_parser() -> argparse.ArgumentParser:
         f"(default {d.heading_height_ratio})",
     )
     p.add_argument(
+        "--columns",
+        choices=("auto", "1"),
+        default=d.columns,
+        help="auto = split a page at a clear gutter and read column by column "
+        "(default); 1 = always read it as one column",
+    )
+    p.add_argument(
         "--keep-clipped",
         action="store_true",
         help="keep narrow text cut off at the photo's left/right edge (facing page)",
@@ -106,6 +113,7 @@ def settings_from_args(args) -> Settings:
         min_page_conf=args.min_conf,
         min_region_conf=args.region_conf,
         heading_height_ratio=args.heading_ratio,
+        columns=args.columns,
         drop_clipped=not args.keep_clipped,
         det_box_thresh=args.box_thresh,
         strip_furniture=not args.keep_furniture,

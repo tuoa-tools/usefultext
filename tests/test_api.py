@@ -455,3 +455,15 @@ def test_desktop_token_guard(tmp_path, monkeypatch):
         assert r.status_code == 303 and "usefultext_token" in r.headers["set-cookie"]
         assert c.get("/api/settings").status_code == 200  # the cookie is kept by the client
         assert c.get("/api/settings", headers={"x-usefultext-token": "secret"}).status_code == 200
+
+
+def test_columns_setting_for_the_app_and_per_document(client, library):
+    assert client.get("/api/settings").json()["columns"] == "auto"
+    assert client.put("/api/settings", json={"columns": "2"}).status_code == 422
+    assert client.put("/api/settings", json={"columns": "1"}).json()["columns"] == "1"
+    doc_id = make_doc(client, files=())
+    r = client.put(f"/api/documents/{doc_id}", json={"columns": "auto"})
+    assert r.status_code == 200 and r.json()["settings"]["columns"] == "auto"
+    assert main_module.merged_settings(client.app.state.config).columns == "1"
+    job = client.app.state.library.get(doc_id)
+    assert main_module.merged_settings(client.app.state.config, job).columns == "auto"

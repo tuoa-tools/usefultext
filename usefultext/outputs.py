@@ -103,6 +103,8 @@ def provenance(rec, total: int = 0, corrected: int = 0) -> str:
         parts.append(f"read quality {rec.mean_conf:.2f}")
         if rec.rotation:
             parts.append(f"rotated {rec.rotation}°")
+        if rec.columns > 1:
+            parts.append(f"{rec.columns} columns")
         if rec.printed_page is not None:
             parts.append(f"printed page {rec.printed_page}")
         if corrected:
@@ -213,6 +215,8 @@ def document_markdown(
             meta.append(f"{rec.n_regions} regions")
             if rec.rotation:
                 meta.append(f"rotated {rec.rotation}°")
+            if rec.columns > 1:
+                meta.append(f"{rec.columns} columns")
             if rec.printed_page is not None:
                 meta.append(f"printed page {rec.printed_page}")
             corrected = corrections.count(rec)
@@ -239,7 +243,7 @@ def document_jsonl(records, corrections: Corrections | None = None) -> str:
         if rec.status != "done":
             continue
         live = corrections.live(rec)
-        line_of, role_of = {}, {}
+        line_of, role_of, column_of = {}, {}, {}
         for li, ln in enumerate(rec.lines):
             role = "body"
             if ln.get("furniture"):
@@ -248,6 +252,7 @@ def document_jsonl(records, corrections: Corrections | None = None) -> str:
             for ri in ln["regions"]:
                 line_of[ri] = li
                 role_of[ri] = role
+                column_of[ri] = ln.get("column", 0)
         for order, r in enumerate(rec.regions):
             li = line_of.get(order, -1)
             row = {
@@ -258,6 +263,7 @@ def document_jsonl(records, corrections: Corrections | None = None) -> str:
                 "line": li,
                 "order": order,
                 "role": role_of.get(order, "body"),
+                "column": column_of.get(order, 0),
                 "text": r["text"],
                 "conf": r["conf"],
                 "bbox": r["bbox"],
@@ -281,6 +287,7 @@ REPORT_COLUMNS = [
     "sharpness",
     "blurry",
     "rotation",
+    "columns",
     "dropped_regions",
     "clipped_regions",
     "furniture_lines",
@@ -310,6 +317,7 @@ def report_csv(records, corrections: Corrections | None = None) -> str:
                 "sharpness": f"{rec.sharpness:.1f}",
                 "blurry": str(rec.blurry).lower(),
                 "rotation": rec.rotation,
+                "columns": rec.columns,
                 "dropped_regions": rec.dropped_regions,
                 "clipped_regions": rec.clipped_regions,
                 "furniture_lines": len(rec.furniture),

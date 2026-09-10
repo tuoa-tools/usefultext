@@ -126,6 +126,7 @@ class SettingsUpdate(BaseModel):
     pdf_dpi: int | None = Field(default=None, ge=72, le=600)
     min_page_conf: float | None = Field(default=None, ge=0.0, le=1.0)
     blur_threshold: float | None = Field(default=None, ge=0.0)
+    columns: Literal["auto", "1"] | None = None
 
 
 class DocumentCreate(BaseModel):
@@ -137,6 +138,7 @@ class DocumentUpdate(BaseModel):
     pdf_dpi: int | None = Field(default=None, ge=72, le=600)
     min_page_conf: float | None = Field(default=None, ge=0.0, le=1.0)
     blur_threshold: float | None = Field(default=None, ge=0.0)
+    columns: Literal["auto", "1"] | None = None
 
 
 class AddPathRequest(BaseModel):
@@ -267,6 +269,7 @@ def _page_view(
             "blurry": record.blurry,
             "sharpness": record.sharpness,
             "rotation": record.rotation,
+            "columns": record.columns,
             "printed_page": record.printed_page,
             "n_regions": record.n_regions,
             "n_lines": len(record.lines),
@@ -365,6 +368,7 @@ def _settings_view(request: Request) -> dict:
         "pdf_dpi": c.pdf_dpi,
         "min_page_conf": c.min_page_conf,
         "blur_threshold": c.blur_threshold,
+        "columns": c.columns,
         "default_library_dir": str(default_library_dir()),
         "defaults": Settings().to_dict(),
     }
@@ -388,7 +392,7 @@ async def update_settings(req: SettingsUpdate, request: Request) -> dict:
             raise HTTPException(422, lib_error)
         c.library_dir = str(path)
         state.library, state.library_error = library, None
-    for key in ("add_mode", "pdf_dpi", "min_page_conf", "blur_threshold"):
+    for key in ("add_mode", "pdf_dpi", "min_page_conf", "blur_threshold", "columns"):
         value = getattr(req, key)
         if value is not None:
             setattr(c, key, value)
@@ -460,7 +464,7 @@ async def update_document(doc_id: str, req: DocumentUpdate, request: Request) ->
     lib, job = _job(request, doc_id)
     if req.title is not None:
         job.title = req.title.strip()
-    for key in ("pdf_dpi", "min_page_conf", "blur_threshold"):
+    for key in ("pdf_dpi", "min_page_conf", "blur_threshold", "columns"):
         value = getattr(req, key)
         if value is not None:
             job.settings[key] = value
