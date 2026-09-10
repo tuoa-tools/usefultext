@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { getHealth, quitApp } from '../api';
+import { ghostButton } from '../lib/ui';
 
 /** Engine and library notices, and the "has quit" screen. */
 export default function StatusBar() {
@@ -57,7 +58,7 @@ export function QuitButton() {
         if (window.confirm('Quit UsefulText? Reading in progress will pause; resume it next time.'))
           quit.mutate();
       }}
-      className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"
+      className={ghostButton}
     >
       Quit
     </button>

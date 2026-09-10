@@ -8,7 +8,7 @@ import {
   SkipBack,
   SkipForward,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import {
   addToDictionary,
   correctLine,
@@ -77,62 +77,67 @@ export default function EditorView({
     go(target.id);
   };
 
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-2 shadow-sm">
-        <IconButton
-          icon={SkipBack}
-          label="Previous page to look at"
-          onClick={() => prevFlag && go(prevFlag.id)}
-          disabled={!prevFlag}
-        />
-        <IconButton
-          icon={ChevronLeft}
-          label="Previous page"
-          onClick={() => prev && go(prev.id)}
-          disabled={!prev}
-        />
-        <select
-          aria-label="Page"
-          className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm"
-          value={pageId}
-          onChange={(e) => go(e.target.value)}
-        >
-          {includedPages(doc.pages).map((p) => (
-            <option key={p.id} value={p.id} disabled={!p.read}>
-              {p.position}. {p.label}
-              {p.read?.printed_page != null ? ` (printed p. ${p.read.printed_page})` : ''}
-              {needsAttention(p) ? ' ⚠' : ''}
-              {p.read ? '' : ' – not read yet'}
-            </option>
-          ))}
-        </select>
-        <IconButton
-          icon={ChevronRight}
-          label="Next page"
-          onClick={() => next && go(next.id)}
-          disabled={!next}
-        />
-        <IconButton
-          icon={SkipForward}
-          label="Next page to look at"
-          onClick={() => nextFlag && go(nextFlag.id)}
-          disabled={!nextFlag}
-        />
-        <span className="w-full text-xs text-slate-500 sm:w-auto">
-          {flagged === 0 ? 'No pages need a look.' : `${plural(flagged, 'page')} to look at.`}
-        </span>
-      </div>
-      <PageEditor
-        key={pageId}
-        docId={doc.id}
-        pageId={pageId}
-        jump={jump}
-        onJumped={() => setJump(null)}
-        onPastEnd={jumpPage}
-        suspectPages={withSuspects.length}
+  const toLookAt = flagged === 0 ? 'none need a look' : `${plural(flagged, 'page')} in all`;
+  // The left part of the editor's one toolbar; PageEditor adds the page's own tools.
+  const nav = (
+    <>
+      <IconButton
+        icon={SkipBack}
+        label={`Previous page to look at (${toLookAt})`}
+        onClick={() => prevFlag && go(prevFlag.id)}
+        disabled={!prevFlag}
+        small
       />
-    </div>
+      <IconButton
+        icon={ChevronLeft}
+        label="Previous page"
+        onClick={() => prev && go(prev.id)}
+        disabled={!prev}
+        small
+      />
+      <select
+        aria-label="Page"
+        className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
+        value={pageId}
+        onChange={(e) => go(e.target.value)}
+      >
+        {includedPages(doc.pages).map((p) => (
+          <option key={p.id} value={p.id} disabled={!p.read}>
+            {p.position}. {p.label}
+            {p.read?.printed_page != null ? ` (printed p. ${p.read.printed_page})` : ''}
+            {needsAttention(p) ? ' ⚠' : ''}
+            {p.read ? '' : ' – not read yet'}
+          </option>
+        ))}
+      </select>
+      <IconButton
+        icon={ChevronRight}
+        label="Next page"
+        onClick={() => next && go(next.id)}
+        disabled={!next}
+        small
+      />
+      <IconButton
+        icon={SkipForward}
+        label={`Next page to look at (${toLookAt})`}
+        onClick={() => nextFlag && go(nextFlag.id)}
+        disabled={!nextFlag}
+        small
+      />
+      <PageChips page={current} />
+    </>
+  );
+  return (
+    <PageEditor
+      key={pageId}
+      docId={doc.id}
+      pageId={pageId}
+      jump={jump}
+      onJumped={() => setJump(null)}
+      onPastEnd={jumpPage}
+      suspectPages={withSuspects.length}
+      toolbar={nav}
+    />
   );
 }
 
@@ -153,6 +158,7 @@ function PageEditor({
   onJumped,
   onPastEnd,
   suspectPages,
+  toolbar,
 }: {
   docId: string;
   pageId: string;
@@ -160,6 +166,8 @@ function PageEditor({
   onJumped: () => void;
   onPastEnd: (direction: 1 | -1) => void;
   suspectPages: number;
+  /** The page navigation, rendered at the left of this page's toolbar. */
+  toolbar: ReactNode;
 }) {
   const qc = useQueryClient();
   const page = useQuery({
@@ -217,11 +225,53 @@ function PageEditor({
     setSelected(all[j].line);
   };
 
-  if (page.isError) return <ErrorText error={page.error} />;
-  if (!page.data) return <p className="text-slate-500">Loading…</p>;
+  // One toolbar: the navigation, the page's chips, then this page's own tools.
+  const bar = (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-1.5 shadow-sm">
+      {toolbar}
+      <div className="ml-auto flex items-center gap-1.5">
+        <span className="text-xs text-slate-500" aria-live="polite">
+          {save.isPending ? 'Saving…' : save.isSuccess || revert.isSuccess ? 'Saved' : ''}
+        </span>
+        <IconButton
+          icon={ChevronsLeft}
+          label="Previous suspect word"
+          onClick={() => step(-1)}
+          disabled={all.length === 0 && suspectPages === 0}
+          small
+        />
+        <IconButton
+          icon={ChevronsRight}
+          label="Next suspect word"
+          onClick={() => step(1)}
+          disabled={all.length === 0 && suspectPages === 0}
+          small
+        />
+      </div>
+    </div>
+  );
+  if (page.isError)
+    return (
+      <div className="space-y-3">
+        {bar}
+        <ErrorText error={page.error} />
+      </div>
+    );
+  if (!page.data)
+    return (
+      <div className="space-y-3">
+        {bar}
+        <p className="text-slate-500">Loading…</p>
+      </div>
+    );
   const p = page.data;
   if (!p.read || p.read.status !== 'done')
-    return <p className="text-slate-600">This page has not been read yet.</p>;
+    return (
+      <div className="space-y-3">
+        {bar}
+        <p className="text-slate-600">This page has not been read yet.</p>
+      </div>
+    );
   const shownLines = p.lines.filter((ln) => !ln.furniture);
   const selectedLine = selected ?? shownLines[0]?.index ?? null;
   const moveTo = (index: number) => {
@@ -238,38 +288,7 @@ function PageEditor({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="font-medium">{p.label}</span>
-        <PageChips page={p} />
-        <span className="ml-auto text-xs text-slate-500">
-          {save.isPending
-            ? 'Saving…'
-            : save.isSuccess || revert.isSuccess
-              ? 'Saved'
-              : 'Changes save as you type'}
-        </span>
-      </div>
-      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-2 text-sm shadow-sm">
-        <IconButton
-          icon={ChevronsLeft}
-          label="Previous suspect word"
-          onClick={() => step(-1)}
-          disabled={all.length === 0 && suspectPages === 0}
-        />
-        <IconButton
-          icon={ChevronsRight}
-          label="Next suspect word"
-          onClick={() => step(1)}
-          disabled={all.length === 0 && suspectPages === 0}
-        />
-        <span className="text-slate-600">
-          {all.length === 0
-            ? suspectPages > 0
-              ? 'No suspect words on this page; some on other pages.'
-              : 'No suspect words.'
-            : `${plural(all.length, 'suspect word')} on this page — words the dictionary doesn’t know: a misread, a name, or fine as it is.`}
-        </span>
-      </div>
+      {bar}
       <ErrorText error={save.error ?? revert.error ?? ignore.error} />
       {p.stale.length > 0 && (
         <details className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">

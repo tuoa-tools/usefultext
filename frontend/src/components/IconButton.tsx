@@ -13,12 +13,15 @@ export default function IconButton({
   onClick,
   disabled = false,
   tone = 'default',
+  small = false,
 }: {
   icon: LucideIcon;
   label: string;
   onClick: () => void;
   disabled?: boolean;
   tone?: keyof typeof TONES;
+  /** Toolbar size (32 px) rather than the row size (36 px). */
+  small?: boolean;
 }) {
   return (
     <button
@@ -27,9 +30,11 @@ export default function IconButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-md border bg-white disabled:cursor-not-allowed disabled:opacity-50 ${TONES[tone]}`}
+      className={`inline-flex items-center justify-center rounded-md border bg-white disabled:cursor-not-allowed disabled:opacity-50 ${
+        small ? 'h-8 w-8' : 'h-9 w-9'
+      } ${TONES[tone]}`}
     >
-      <Icon className="h-5 w-5" aria-hidden="true" />
+      <Icon className={small ? 'h-4 w-4' : 'h-5 w-5'} aria-hidden="true" />
     </button>
   );
 }

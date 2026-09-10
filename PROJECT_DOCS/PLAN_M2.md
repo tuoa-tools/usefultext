@@ -556,6 +556,14 @@ the region boxes made a split feasible.
 - [x] Version 0.2.0; README rewritten around the app; `HANDOVER.md`
       brought up to the end of Milestone 2. Tests: launcher helpers, the
       bridge, idle logic, keep-alive, quit (6 in `tests/test_desktop.py`).
+- [x] From Adam's first look inside the window (2026-09-10): the chrome
+      above the content took a third of the window. Now one quiet app bar
+      (small wordmark, ghost buttons), one document row (back arrow, name,
+      status, counts, Start/Read again), a thin progress line instead of a
+      card, underline tabs instead of the three big buttons, and one editor
+      toolbar (page navigation, the page's chips, then « » and the save
+      state) instead of three rows; the suspect-word explanation moved to
+      Help. Roughly 440 px of chrome became about 170.
 - Done when: `usefultext-app` opens a window on the Mac and the step-3
   friend-test passes inside it — Adam's click-through. Windows/Linux
   WebView2/webkit checks are Milestone 3 work on real machines.

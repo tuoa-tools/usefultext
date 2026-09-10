@@ -3,7 +3,7 @@ import { ChevronLeft, Pause, Pencil, Play, RotateCcw } from 'lucide-react';
 import { getDocument, pauseDocument, startDocument, updateDocument, type Document } from '../api';
 import { formatEta, plural, quality, statusLabel, statusTone } from '../lib/format';
 import type { Route, Tab } from '../lib/route';
-import { segmentClass } from '../lib/ui';
+import { tabClass } from '../lib/ui';
 import ActionButton from './ActionButton';
 import EditorView from './EditorView';
 import ErrorText from './ErrorText';
@@ -50,7 +50,12 @@ export default function DocumentView({
   if (doc.isError) {
     return (
       <section className="space-y-3">
-        <BackLink navigate={navigate} />
+        <IconButton
+          icon={ChevronLeft}
+          label="Back to the library"
+          onClick={() => navigate({ view: 'library' })}
+          small
+        />
         <ErrorText error={doc.error} />
       </section>
     );
@@ -61,44 +66,47 @@ export default function DocumentView({
   const setTab = (tab: Tab) => navigate({ view: 'document', id: route.id, tab });
 
   return (
-    <section className="space-y-4">
-      <BackLink navigate={navigate} />
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h2 className="truncate text-2xl font-semibold">{d.title}</h2>
-            <IconButton
-              icon={Pencil}
-              label="Rename"
-              onClick={() => {
-                const title = window.prompt('Document name', d.title);
-                if (title && title.trim() && title.trim() !== d.title) rename.mutate(title.trim());
-              }}
-            />
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusTone(d.status)}`}
-            >
-              {statusLabel(d.status)}
-            </span>
-          </div>
-          <p className="text-sm text-slate-600">
-            {d.included === 0 ? 'No pages yet' : `${d.read} of ${plural(d.included, 'page')} read`}
-            {d.total_pages > d.included && ` · ${d.total_pages - d.included} excluded`}
-            {d.low_conf + d.blurry + d.errors > 0 && (
-              <span className="text-amber-800">
-                {' '}
-                · {plural(d.low_conf + d.blurry + d.errors, 'page')} to look at
-              </span>
-            )}
-            {d.corrected_lines > 0 && ` · ${plural(d.corrected_lines, 'line')} corrected`}
-          </p>
-        </div>
-        <ReadControls
-          doc={d}
-          onStart={(force) => start.mutate(force)}
-          onPause={() => pause.mutate()}
-          busy={start.isPending || pause.isPending}
+    <section className="space-y-3">
+      {/* One row: the way back, the name, where it stands, and what to do next. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <IconButton
+          icon={ChevronLeft}
+          label="Back to the library"
+          onClick={() => navigate({ view: 'library' })}
+          small
         />
+        <h2 className="min-w-0 truncate text-xl font-semibold">{d.title}</h2>
+        <IconButton
+          icon={Pencil}
+          label="Rename"
+          small
+          onClick={() => {
+            const title = window.prompt('Document name', d.title);
+            if (title && title.trim() && title.trim() !== d.title) rename.mutate(title.trim());
+          }}
+        />
+        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusTone(d.status)}`}>
+          {statusLabel(d.status)}
+        </span>
+        <span className="text-sm text-slate-500">
+          {d.included === 0 ? 'No pages yet' : `${d.read} of ${plural(d.included, 'page')} read`}
+          {d.total_pages > d.included && ` · ${d.total_pages - d.included} excluded`}
+          {d.low_conf + d.blurry + d.errors > 0 && (
+            <span className="text-amber-800">
+              {' '}
+              · {plural(d.low_conf + d.blurry + d.errors, 'page')} to look at
+            </span>
+          )}
+          {d.corrected_lines > 0 && ` · ${plural(d.corrected_lines, 'line')} corrected`}
+        </span>
+        <div className="ml-auto">
+          <ReadControls
+            doc={d}
+            onStart={(force) => start.mutate(force)}
+            onPause={() => pause.mutate()}
+            busy={start.isPending || pause.isPending}
+          />
+        </div>
       </div>
       <ErrorText error={start.error ?? pause.error ?? rename.error} />
       {d.last_run?.error && (
@@ -108,17 +116,17 @@ export default function DocumentView({
       )}
       {active && d.progress && <ProgressBar doc={d} />}
 
-      <nav className="flex gap-2 rounded-lg bg-slate-200 p-1" aria-label="View">
+      <nav className="flex gap-5 border-b border-slate-200" aria-label="View">
         <button
           type="button"
-          className={segmentClass(route.tab === 'pages')}
+          className={tabClass(route.tab === 'pages')}
           onClick={() => setTab('pages')}
         >
           Pages
         </button>
         <button
           type="button"
-          className={segmentClass(route.tab === 'editor')}
+          className={tabClass(route.tab === 'editor')}
           onClick={() => setTab('editor')}
           disabled={d.read === 0}
         >
@@ -126,7 +134,7 @@ export default function DocumentView({
         </button>
         <button
           type="button"
-          className={segmentClass(route.tab === 'export')}
+          className={tabClass(route.tab === 'export')}
           onClick={() => setTab('export')}
           disabled={d.read === 0}
         >
@@ -138,18 +146,6 @@ export default function DocumentView({
       {route.tab === 'editor' && <EditorView doc={d} route={route} navigate={navigate} />}
       {route.tab === 'export' && <ExportView doc={d} />}
     </section>
-  );
-}
-
-function BackLink({ navigate }: { navigate: (r: Route) => void }) {
-  return (
-    <button
-      type="button"
-      onClick={() => navigate({ view: 'library' })}
-      className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900"
-    >
-      <ChevronLeft className="h-4 w-4" aria-hidden="true" /> Library
-    </button>
   );
 }
 
@@ -175,7 +171,6 @@ function ReadControls({
           label={s === 'queued' ? 'Waiting… Pause' : 'Pause'}
           onClick={onPause}
           disabled={busy}
-          large
         />
       )}
       {s === 'new' && (
@@ -185,7 +180,6 @@ function ReadControls({
           tone="primary"
           onClick={() => onStart(false)}
           disabled={busy || !canStart}
-          large
         />
       )}
       {(s === 'paused' || s === 'error') && (
@@ -195,7 +189,6 @@ function ReadControls({
           tone="primary"
           onClick={() => onStart(false)}
           disabled={busy || !canStart}
-          large
         />
       )}
       {doc.read > 0 && s !== 'running' && s !== 'queued' && (
@@ -226,32 +219,33 @@ function ProgressBar({ doc }: { doc: Document }) {
   const pct = p.total ? Math.round((p.done / p.total) * 100) : 0;
   const last = p.last_page;
   return (
-    <div className="space-y-2 rounded-xl bg-white p-4 shadow-sm" aria-live="polite">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-        <span className="font-medium">
-          {p.status === 'queued'
-            ? 'Waiting for the engine…'
-            : `Reading page ${Math.min(p.done + 1, p.total)} of ${p.total}`}
-          {p.current && p.status === 'running' && (
-            <span className="text-slate-500"> · {p.current}</span>
+    <div className="space-y-1" aria-live="polite">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-xs text-slate-600">
+        <span>
+          <span className="font-medium text-slate-800">
+            {p.status === 'queued'
+              ? 'Waiting for the engine…'
+              : `Reading page ${Math.min(p.done + 1, p.total)} of ${p.total}`}
+          </span>
+          {p.current && p.status === 'running' && ` · ${p.current}`}
+          {last && (
+            <>
+              {' '}
+              · last: {last.label},{' '}
+              {last.status === 'error'
+                ? `could not be read (${last.error})`
+                : `read quality ${quality(last.mean_conf)}`}
+              {last.rotation ? `, rotated ${last.rotation}°` : ''}
+              {last.blurry ? ', looks blurry' : ''}
+              {last.low_conf ? ', low read quality' : ''}
+            </>
           )}
         </span>
-        <span className="text-slate-600">{formatEta(p.eta_seconds)}</span>
+        <span>{formatEta(p.eta_seconds)}</span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+      <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
         <div className="h-full bg-blue-600 transition-all" style={{ width: `${pct}%` }} />
       </div>
-      {last && (
-        <p className="text-xs text-slate-600">
-          Last page: {last.label} ·{' '}
-          {last.status === 'error'
-            ? `could not be read (${last.error})`
-            : `read quality ${quality(last.mean_conf)}`}
-          {last.rotation ? ` · rotated ${last.rotation}°` : ''}
-          {last.blurry ? ' · looks blurry' : ''}
-          {last.low_conf ? ' · low read quality' : ''}
-        </p>
-      )}
     </div>
   );
 }

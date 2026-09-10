@@ -12,7 +12,9 @@ export default function HelpPanel() {
       <section>
         <h3 className="font-semibold text-slate-900">Reading a document</h3>
         <ol className="list-decimal space-y-1 pl-5">
-          <li>New document, then drop the page photos in (or add a folder by its path).</li>
+          <li>
+            Drop a folder or the page photos onto the library; the document is named after them.
+          </li>
           <li>
             Check the order: drag pages, or sort by name, time, or the page numbers found on the
             pages once they are read. Pages that look blurry are marked before you start.
@@ -22,7 +24,7 @@ export default function HelpPanel() {
             In the editor, fix what the engine got wrong. Your changes are saved as you type and
             kept apart from the machine’s text — Revert brings a line back.
           </li>
-          <li>Export as Markdown, plain text or the individual pages, or copy it all.</li>
+          <li>Export as Markdown, plain text, Word or the individual pages, or copy it all.</li>
         </ol>
       </section>
       <section>
@@ -31,6 +33,14 @@ export default function HelpPanel() {
           The number next to each page is the engine’s own certainty, not a measure of accuracy. A
           blurry photo can read with high certainty and still contain mistakes — so the blur warning
           matters. Retake a page by replacing its photo; it keeps its place.
+        </p>
+      </section>
+      <section>
+        <h3 className="font-semibold text-slate-900">Suspect words</h3>
+        <p>
+          Words the dictionary doesn’t know are marked in the editor: a misread, a name, or fine as
+          it is. The « » buttons step through them, page after page. “Ignore” under a line teaches
+          the library a word for good.
         </p>
       </section>
       <section>

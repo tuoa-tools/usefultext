@@ -10,7 +10,7 @@ import SettingsPanel from './components/SettingsPanel';
 import StatusBar, { QuitButton } from './components/StatusBar';
 import { useNativeDialogs } from './lib/native';
 import { useRoute } from './lib/route';
-import { compactInputClass, headerButton } from './lib/ui';
+import { compactInputClass, ghostButton, headerButton } from './lib/ui';
 
 type Panel = 'settings' | 'help' | null;
 
@@ -29,23 +29,24 @@ export default function App() {
 
   return (
     <main
-      className={`mx-auto w-full space-y-5 p-4 sm:p-6 ${
+      className={`mx-auto w-full space-y-3 px-4 py-3 sm:px-6 ${
         route.view === 'document' && route.tab === 'editor' ? 'max-w-[1500px]' : 'max-w-5xl'
       }`}
     >
-      <header className="flex items-center justify-between">
+      {/* One quiet bar: the wordmark is the way home, the rest stays out of the way. */}
+      <header className="flex items-center justify-between gap-3">
         <button
           type="button"
           onClick={() => navigate({ view: 'library' })}
-          className="text-3xl font-bold"
+          className="text-lg font-semibold tracking-tight"
         >
           UsefulText
         </button>
-        <div className="flex gap-2">
-          <button type="button" onClick={() => setPanel('settings')} className={headerButton}>
+        <div className="flex gap-1">
+          <button type="button" onClick={() => setPanel('settings')} className={ghostButton}>
             Settings
           </button>
-          <button type="button" onClick={() => setPanel('help')} className={headerButton}>
+          <button type="button" onClick={() => setPanel('help')} className={ghostButton}>
             Help
           </button>
           <QuitButton />

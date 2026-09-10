@@ -228,7 +228,7 @@ function AddArea({
         }}
         onDragLeave={() => setOver(false)}
         onDrop={onDrop}
-        className={`cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition ${
+        className={`cursor-pointer rounded-xl border-2 border-dashed p-4 text-center transition ${
           over ? 'border-blue-500 bg-blue-50' : 'border-slate-300 bg-white hover:bg-slate-50'
         }`}
       >
