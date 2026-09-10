@@ -159,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
 
     url = launch_url(port, token)
     use_window = not args.browser and not args.no_browser and window.available()
-    win = window.DesktopWindow(url, folder / "webview") if use_window else None
+    win = window.DesktopWindow(url, folder / "webview", token) if use_window else None
 
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_config=None, log_level="info")
     server = uvicorn.Server(config)

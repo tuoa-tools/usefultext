@@ -7,6 +7,8 @@ export interface NativeDialogs {
   pick_folder(): Promise<string | null>;
   /** Photo and PDF paths chosen in the OS dialog; empty if cancelled. */
   pick_files(): Promise<string[]>;
+  /** The launch secret, to send as a header (see api.ts setNativeToken). */
+  token(): Promise<string>;
 }
 
 declare global {

@@ -36,13 +36,15 @@ def test_window_bridge_returns_paths_from_the_dialogs():
     assert window.first_path(()) is None
     assert window.first_path(("/a/b",)) == "/a/b"
     assert window.first_path("/lone") == "/lone"
-    bridge = window.Bridge()
+    bridge = window.Bridge("secret")
+    assert bridge.token() == "secret"
     bridge.window = SimpleNamespace(create_file_dialog=lambda *a, **k: ("/pick/one", "/pick/two"))
     if window.available():
         assert bridge.pick_folder() == "/pick/one"
         assert bridge.pick_files() == ["/pick/one", "/pick/two"]
     closed = []
-    win = window.DesktopWindow("http://127.0.0.1:1/launch", "/nowhere")
+    win = window.DesktopWindow("http://127.0.0.1:1/launch", "/nowhere", "secret")
+    assert win.bridge.token() == "secret"
     win.window = SimpleNamespace(destroy=lambda: closed.append(True))
     win.close()
     win.close()  # idempotent

@@ -41,8 +41,14 @@ def first_path(chosen) -> str | None:
 class Bridge:
     """What the page can call through window.pywebview.api."""
 
-    def __init__(self) -> None:
+    def __init__(self, token: str = "") -> None:
         self.window = None
+        self._token = token
+
+    def token(self) -> str:
+        """The launch secret, so the page can send it as a header instead of relying on
+        the cookie the launch URL set (cookie handling differs between web views)."""
+        return self._token
 
     def pick_folder(self) -> str | None:
         import webview
@@ -63,11 +69,11 @@ class DesktopWindow:
     (main) thread and returns when the window closes; `close()` may be
     called from any thread (the API's quit)."""
 
-    def __init__(self, url: str, storage_dir: Path) -> None:
+    def __init__(self, url: str, storage_dir: Path, token: str = "") -> None:
         self.url = url
         self.storage_dir = Path(storage_dir)
         self.window = None
-        self.bridge = Bridge()
+        self.bridge = Bridge(token)
 
     def open(self) -> bool:
         try:

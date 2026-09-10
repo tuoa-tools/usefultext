@@ -230,10 +230,21 @@ async function errorDetail(res: Response): Promise<string> {
   return `Request failed (${res.status})`;
 }
 
+/** The launch secret, handed to the page by the desktop window (app/window.py's bridge) and
+ *  sent as a header on every call; a browser tab relies on the cookie the launch URL set. */
+let nativeToken: string | null = null;
+export function setNativeToken(token: string | null): void {
+  nativeToken = token;
+}
+function withAuth(headers?: Record<string, string>): Record<string, string> | undefined {
+  if (!nativeToken) return headers;
+  return { ...(headers ?? {}), 'x-usefultext-token': nativeToken };
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    headers: withAuth(body === undefined ? undefined : { 'Content-Type': 'application/json' }),
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) throw new ApiError(await errorDetail(res), res.status);
@@ -241,7 +252,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 async function requestText(path: string): Promise<string> {
-  const res = await fetch(`${API_BASE}${path}`);
+  const res = await fetch(`${API_BASE}${path}`, { headers: withAuth() });
   if (!res.ok) throw new ApiError(await errorDetail(res), res.status);
   return await res.text();
 }
@@ -286,7 +297,11 @@ export async function addFiles(
   const form = new FormData();
   for (const f of files) form.append('files', f, f.name);
   if (replace) form.append('replace', replace);
-  const res = await fetch(`${API_BASE}/api/documents/${id}/files`, { method: 'POST', body: form });
+  const res = await fetch(`${API_BASE}/api/documents/${id}/files`, {
+    method: 'POST',
+    body: form,
+    headers: withAuth(),
+  });
   if (!res.ok) throw new ApiError(await errorDetail(res), res.status);
   return (await res.json()) as Document & { added: string[] };
 }

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useState } from 'react';
-import { getHealth, getSettings, saveSettings } from './api';
+import { useCallback, useEffect, useState } from 'react';
+import { getHealth, getSettings, saveSettings, setNativeToken } from './api';
 import DocumentView from './components/DocumentView';
 import ErrorText from './components/ErrorText';
 import HelpPanel from './components/HelpPanel';
@@ -18,6 +18,25 @@ export default function App() {
   const [route, navigate] = useRoute();
   const [panel, setPanel] = useState<Panel>(null);
   const closePanel = useCallback(() => setPanel(null), []);
+  const qc = useQueryClient();
+  const native = useNativeDialogs();
+  // Inside the desktop window, take the launch secret from the bridge and send it as a
+  // header from now on; anything that failed for want of the cookie is asked again.
+  useEffect(() => {
+    if (!native) return;
+    let cancelled = false;
+    native
+      .token()
+      .then((token) => {
+        if (cancelled || !token) return;
+        setNativeToken(token);
+        qc.invalidateQueries();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [native, qc]);
   // Also the keep-alive: in desktop mode with a browser tab, two minutes without this
   // ping (and nothing being read) tells the server the tab is gone and it exits.
   const health = useQuery({
@@ -81,6 +100,7 @@ export default function App() {
 /** The one-time choice of a library folder; nothing else works until it is made. */
 function FirstRun() {
   const settings = useQuery({ queryKey: ['settings'], queryFn: getSettings });
+  if (settings.isError) return <ErrorText error={settings.error} />;
   if (!settings.data) return <p className="text-slate-500">Loading…</p>;
   return <FirstRunForm suggested={settings.data.default_library_dir} />;
 }
