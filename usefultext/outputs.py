@@ -21,12 +21,12 @@ from __future__ import annotations
 import csv
 import io
 import json
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .checks import quality_note
 from .corrections import Corrections
+from .fileio import read_text, write_text
 from .inputs import PageSource, slug
 from .settings import Settings
 
@@ -37,9 +37,7 @@ PAGE_FILE_GLOB = "page_*.txt"
 
 
 def _atomic_write(path: Path, data: str) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(data, encoding="utf-8")
-    os.replace(tmp, path)
+    write_text(path, data)
 
 
 @dataclass
@@ -53,11 +51,11 @@ class JobState:
     def load(cls, out_dir: Path) -> JobState:
         from .pipeline import PageRecord
 
-        p = out_dir / STATE_FILE
-        if not p.exists():
+        text = read_text(out_dir / STATE_FILE)
+        if text is None:
             return cls()
         try:
-            raw = json.loads(p.read_text(encoding="utf-8"))
+            raw = json.loads(text)
             state = cls(
                 version=raw.get("version", STATE_VERSION),
                 title=raw.get("title", ""),

@@ -74,6 +74,13 @@ def wait_for(pred, timeout=5.0):
     return False
 
 
+def doc_view(client, doc_id):
+    """The document's view; an error answer fails here, with its detail."""
+    r = client.get(f"/api/documents/{doc_id}")
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("USEFULTEXT_DATA_DIR", str(tmp_path / "appdata"))
@@ -108,7 +115,7 @@ def read_all(client, doc_id, n, force=False):
     assert r.status_code == 200, r.text
     for _ in range(n):
         GATE.release()
-    assert wait_for(lambda: client.get(f"/api/documents/{doc_id}").json()["status"] == "done")
+    assert wait_for(lambda: doc_view(client, doc_id)["status"] == "done")
 
 
 # --------------------------------------------------------------------------- #
@@ -130,7 +137,7 @@ def test_create_add_and_list(client, library):
     r = client.post(f"/api/documents/{doc_id}/files", files=mixed)
     assert r.status_code == 422 and "notes.txt" in r.json()["detail"]
     # the batch was refused as a whole: nothing added, no stray files left behind
-    r = client.get(f"/api/documents/{doc_id}").json()
+    r = doc_view(client, doc_id)
     assert r["pages"] == [] and r["status"] == "new" and r["stray_files"] == []
     payload = [("files", (n, jpeg_bytes(), "image/jpeg")) for n in ("a.jpg", "a.jpg")]
     r = client.post(f"/api/documents/{doc_id}/files", files=payload)
@@ -179,7 +186,7 @@ def test_add_path_copy_and_move(client, library, tmp_path):
 
 def test_reorder_exclude_remove_and_sort(client, library):
     doc_id = make_doc(client)
-    ids = [p["id"] for p in client.get(f"/api/documents/{doc_id}").json()["pages"]]
+    ids = [p["id"] for p in doc_view(client, doc_id)["pages"]]
     r = client.put(
         f"/api/documents/{doc_id}/pages",
         json={"pages": [{"id": ids[2]}, {"id": ids[0], "excluded": True}]},
@@ -216,8 +223,8 @@ def test_read_pause_resume_and_outputs(client, library):
     assert client.post(f"/api/documents/{doc_id}/start").status_code == 200
     assert client.post(f"/api/documents/{doc_id}/start").status_code == 409  # already queued
     GATE.release()  # page 1
-    assert wait_for(lambda: client.get(f"/api/documents/{doc_id}").json().get("read") == 1)
-    view = client.get(f"/api/documents/{doc_id}").json()
+    assert wait_for(lambda: doc_view(client, doc_id).get("read") == 1)
+    view = doc_view(client, doc_id)
     assert (
         view["status"] == "running"
         and view["progress"]["done"] == 1
@@ -231,13 +238,13 @@ def test_read_pause_resume_and_outputs(client, library):
     assert client.put(f"/api/documents/{doc_id}/pages", json={"pages": []}).status_code == 409
     assert client.post(f"/api/documents/{doc_id}/pause").json() == {"ok": True}
     GATE.release()  # lets the fake return page 2; run_job then sees should_stop
-    assert wait_for(lambda: client.get(f"/api/documents/{doc_id}").json()["status"] == "paused")
-    view = client.get(f"/api/documents/{doc_id}").json()
+    assert wait_for(lambda: doc_view(client, doc_id)["status"] == "paused")
+    view = doc_view(client, doc_id)
     assert view["last_run"]["stopped_early"] is True and view["read"] == 2
     assert client.post(f"/api/documents/{doc_id}/resume").status_code == 200
     GATE.release()  # page 3 (pages 1–2 resume without the gate)
-    assert wait_for(lambda: client.get(f"/api/documents/{doc_id}").json()["status"] == "done")
-    view = client.get(f"/api/documents/{doc_id}").json()
+    assert wait_for(lambda: doc_view(client, doc_id)["status"] == "done")
+    view = doc_view(client, doc_id)
     assert view["last_run"]["resumed"] == 2 and view["last_run"]["processed"] == 1
     folder = Path(view["folder"])
     assert sorted(p.name for p in (folder / "pages").glob("*.txt")) == [
@@ -263,7 +270,7 @@ def test_read_pause_resume_and_outputs(client, library):
 def test_corrections_through_the_api(client, library):
     doc_id = make_doc(client, files=("a.jpg",))
     read_all(client, doc_id, 1)
-    pid = client.get(f"/api/documents/{doc_id}").json()["pages"][0]["id"]
+    pid = doc_view(client, doc_id)["pages"][0]["id"]
     page = client.get(f"/api/documents/{doc_id}/pages/{pid}").json()
     assert [ln["origin"] for ln in page["lines"]] == ["ocr"] * 3 and page["width"] == 1200
     assert len(page["regions"]) == 3 and page["read"]["corrected"] == 0
@@ -294,7 +301,7 @@ def test_corrections_through_the_api(client, library):
     z = client.get(f"/api/documents/{doc_id}/export/pages.zip")
     assert z.status_code == 200 and z.headers["content-type"] == "application/zip"
     assert client.delete(f"/api/documents/{doc_id}/pages/{pid}/lines/1").json()["origin"] == "ocr"
-    assert client.get(f"/api/documents/{doc_id}").json()["corrected_lines"] == 0
+    assert doc_view(client, doc_id)["corrected_lines"] == 0
     assert (
         client.put(f"/api/documents/{doc_id}/pages/{pid}/lines/9", json={"text": "x"}).status_code
         == 404
@@ -304,9 +311,9 @@ def test_corrections_through_the_api(client, library):
 def test_suspects_ignore_and_docx(client, library):
     doc_id = make_doc(client, files=("a.jpg",))
     read_all(client, doc_id, 1)
-    pid = client.get(f"/api/documents/{doc_id}").json()["pages"][0]["id"]
+    pid = doc_view(client, doc_id)["pages"][0]["id"]
     # the fake's lines contain "jpg" — not a word — so every line has one suspect
-    view = client.get(f"/api/documents/{doc_id}").json()
+    view = doc_view(client, doc_id)
     assert view["pages"][0]["read"]["suspects"] == 3
     page = client.get(f"/api/documents/{doc_id}/pages/{pid}").json()
     assert page["suspects"] == 3
@@ -347,14 +354,14 @@ def test_correction_while_reading_takes_turns(client, library):
     doc_id = make_doc(client)
     assert client.post(f"/api/documents/{doc_id}/start").status_code == 200
     GATE.release()
-    assert wait_for(lambda: client.get(f"/api/documents/{doc_id}").json().get("read") == 1)
-    pid = client.get(f"/api/documents/{doc_id}").json()["pages"][0]["id"]
+    assert wait_for(lambda: doc_view(client, doc_id).get("read") == 1)
+    pid = doc_view(client, doc_id)["pages"][0]["id"]
     # the worker is blocked inside the fake on page 2 and holds no lock: the save goes through
     r = client.put(f"/api/documents/{doc_id}/pages/{pid}/lines/0", json={"text": "Chapter, fixed"})
     assert r.status_code == 200
     GATE.release()
     GATE.release()
-    assert wait_for(lambda: client.get(f"/api/documents/{doc_id}").json()["status"] == "done")
+    assert wait_for(lambda: doc_view(client, doc_id)["status"] == "done")
     md = client.get(f"/api/documents/{doc_id}/export/md").text
     assert "Chapter, fixed" in md and md.count("## Page ") == 3  # the run's last rewrite kept it
 
@@ -362,7 +369,7 @@ def test_correction_while_reading_takes_turns(client, library):
 def test_replace_a_page_with_a_retake(client, library):
     doc_id = make_doc(client, files=("a.jpg", "b.jpg"))
     read_all(client, doc_id, 2)
-    pages = client.get(f"/api/documents/{doc_id}").json()["pages"]
+    pages = doc_view(client, doc_id)["pages"]
     target = pages[1]["id"]
     r = client.post(
         f"/api/documents/{doc_id}/files",
@@ -380,15 +387,15 @@ def test_replace_a_page_with_a_retake(client, library):
     assert view["stray_files"] == [] and view["status"] == "paused"
     assert client.post(f"/api/documents/{doc_id}/start").status_code == 200
     GATE.release()
-    assert wait_for(lambda: client.get(f"/api/documents/{doc_id}").json()["status"] == "done")
+    assert wait_for(lambda: doc_view(client, doc_id)["status"] == "done")
     assert (
-        client.get(f"/api/documents/{doc_id}").json()["last_run"]
+        doc_view(client, doc_id)["last_run"]
         == pytest.approx(
             {"resumed": 1, "processed": 1, "failed": 0, "stopped_early": False}, abs=1e9
         )
         or True
     )  # shape checked below
-    last = client.get(f"/api/documents/{doc_id}").json()["last_run"]
+    last = doc_view(client, doc_id)["last_run"]
     assert (last["resumed"], last["processed"]) == (1, 1)
 
 
@@ -398,18 +405,18 @@ def test_library_can_move(client, library, tmp_path):
     moved = tmp_path / "Moved Library"
     shutil.move(str(library), str(moved))
     assert client.put("/api/settings", json={"library_dir": str(moved)}).status_code == 200
-    view = client.get(f"/api/documents/{doc_id}").json()
+    view = doc_view(client, doc_id)
     assert view["status"] == "done" and view["folder"].startswith(str(moved))
     assert client.post(f"/api/documents/{doc_id}/start").status_code == 200
-    assert wait_for(lambda: client.get(f"/api/documents/{doc_id}").json()["status"] == "done")
-    last = client.get(f"/api/documents/{doc_id}").json()["last_run"]
+    assert wait_for(lambda: doc_view(client, doc_id)["status"] == "done")
+    last = doc_view(client, doc_id)["last_run"]
     assert last["resumed"] == 2 and last["processed"] == 0  # nothing re-read after the move
 
 
 def test_force_rereads_and_reports_stale_corrections(client, library):
     doc_id = make_doc(client, files=("a.jpg",))
     read_all(client, doc_id, 1)
-    pid = client.get(f"/api/documents/{doc_id}").json()["pages"][0]["id"]
+    pid = doc_view(client, doc_id)["pages"][0]["id"]
     client.put(f"/api/documents/{doc_id}/pages/{pid}/lines/2", json={"text": "fixed"})
     read_all(client, doc_id, 1, force=True)
     page = client.get(f"/api/documents/{doc_id}/pages/{pid}").json()
@@ -418,7 +425,7 @@ def test_force_rereads_and_reports_stale_corrections(client, library):
 
 def test_thumbnail_dictionary_reveal_and_trash(client, library, monkeypatch, tmp_path):
     doc_id = make_doc(client, files=("a.jpg",))
-    pid = client.get(f"/api/documents/{doc_id}").json()["pages"][0]["id"]
+    pid = doc_view(client, doc_id)["pages"][0]["id"]
     r = client.get(f"/api/documents/{doc_id}/previews/{pid}.thumb.jpg")
     assert r.status_code == 200 and Image.open(io.BytesIO(r.content)).size == (320, 240)
     assert client.get(f"/api/documents/{doc_id}/previews/{pid}.jpg").status_code == 404  # unread
@@ -435,7 +442,7 @@ def test_thumbnail_dictionary_reveal_and_trash(client, library, monkeypatch, tmp
     import send2trash
 
     monkeypatch.setattr(send2trash, "send2trash", lambda p: shutil.move(p, trash / Path(p).name))
-    folder = Path(client.get(f"/api/documents/{doc_id}").json()["folder"])
+    folder = Path(doc_view(client, doc_id)["folder"])
     assert client.delete(f"/api/library/{doc_id}").json()["ok"] is True
     assert not folder.exists() and (trash / folder.name / "job.json").exists()
     assert client.get(f"/api/documents/{doc_id}").status_code == 404

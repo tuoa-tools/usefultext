@@ -218,9 +218,18 @@ def _entry(job: Job, page_id: str) -> PageEntry:
     return entry
 
 
+def _locked(lock, fn, *args):
+    """Run a reader (or writer) of the document folder under the document's lock,
+    so it never touches a file the worker is swapping into place — Windows refuses
+    a swap while any other handle has the file open."""
+    with lock:
+        return fn(*args)
+
+
 def _summary_view(lib: Library, job: Job, worker: Worker, settings: Settings) -> dict:
     prog = worker.active(job.id)
-    counts = job.summary or lib.refresh_summary(job, settings)
+    with worker.lock(job.id):  # the counts may need computing, which saves job.json
+        counts = job.summary or lib.refresh_summary(job, settings)
     return {
         "id": job.id,
         "title": job.title,
@@ -456,7 +465,9 @@ async def reveal_document(doc_id: str, request: Request) -> dict:
 @app.get("/api/documents/{doc_id}")
 async def get_document(doc_id: str, request: Request) -> dict:
     lib, job = _job(request, doc_id)
-    return await asyncio.to_thread(_document_view, request, lib, job)
+    return await asyncio.to_thread(
+        _locked, _worker(request).lock(job.id), _document_view, request, lib, job
+    )
 
 
 @app.put("/api/documents/{doc_id}")
@@ -468,8 +479,10 @@ async def update_document(doc_id: str, req: DocumentUpdate, request: Request) ->
         value = getattr(req, key)
         if value is not None:
             job.settings[key] = value
-    await asyncio.to_thread(job.save)
-    return await asyncio.to_thread(_document_view, request, lib, job)
+    await asyncio.to_thread(_locked, _worker(request).lock(job.id), job.save)
+    return await asyncio.to_thread(
+        _locked, _worker(request).lock(job.id), _document_view, request, lib, job
+    )
 
 
 def _save_upload(upload: UploadFile, folder: Path) -> tuple[Path, str]:
@@ -504,7 +517,9 @@ async def add_files(
     await asyncio.to_thread(lib.refresh, job, settings, _worker(request).lock(job.id))
     return {
         "added": [e.id for e in added],
-        **await asyncio.to_thread(_document_view, request, lib, job),
+        **await asyncio.to_thread(
+            _locked, _worker(request).lock(job.id), _document_view, request, lib, job
+        ),
     }
 
 
@@ -522,7 +537,9 @@ async def add_path(doc_id: str, req: AddPathRequest, request: Request) -> dict:
     await asyncio.to_thread(lib.refresh, job, settings, _worker(request).lock(job.id))
     return {
         "added": [e.id for e in added],
-        **await asyncio.to_thread(_document_view, request, lib, job),
+        **await asyncio.to_thread(
+            _locked, _worker(request).lock(job.id), _document_view, request, lib, job
+        ),
     }
 
 
@@ -534,7 +551,12 @@ async def set_pages(doc_id: str, req: PagesUpdate, request: Request) -> dict:
     settings = _settings(request, job)
     removed = await asyncio.to_thread(lib.set_pages, job, [p.model_dump() for p in req.pages])
     await asyncio.to_thread(lib.refresh, job, settings, _worker(request).lock(job.id))
-    return {"removed": removed, **await asyncio.to_thread(_document_view, request, lib, job)}
+    return {
+        "removed": removed,
+        **await asyncio.to_thread(
+            _locked, _worker(request).lock(job.id), _document_view, request, lib, job
+        ),
+    }
 
 
 @app.post("/api/documents/{doc_id}/pages/adopt", status_code=201)
@@ -547,7 +569,9 @@ async def adopt_files(doc_id: str, req: AdoptRequest, request: Request) -> dict:
     await asyncio.to_thread(lib.refresh, job, settings, _worker(request).lock(job.id))
     return {
         "added": [e.id for e in added],
-        **await asyncio.to_thread(_document_view, request, lib, job),
+        **await asyncio.to_thread(
+            _locked, _worker(request).lock(job.id), _document_view, request, lib, job
+        ),
     }
 
 
@@ -558,7 +582,12 @@ async def sort_pages(doc_id: str, req: SortRequest, request: Request) -> dict:
     settings = _settings(request, job)
     notes = await asyncio.to_thread(lib.sort_pages, job, req.by)
     await asyncio.to_thread(lib.refresh, job, settings, _worker(request).lock(job.id))
-    return {"notes": notes, **await asyncio.to_thread(_document_view, request, lib, job)}
+    return {
+        "notes": notes,
+        **await asyncio.to_thread(
+            _locked, _worker(request).lock(job.id), _document_view, request, lib, job
+        ),
+    }
 
 
 @app.post("/api/documents/{doc_id}/start")
@@ -642,7 +671,15 @@ def _page_detail(lib: Library, job: Job, entry: PageEntry, settings: Settings) -
 async def get_page(doc_id: str, page_id: str, request: Request) -> dict:
     lib, job = _job(request, doc_id)
     entry = _entry(job, page_id)
-    return await asyncio.to_thread(_page_detail, lib, job, entry, _settings(request, job))
+    return await asyncio.to_thread(
+        _locked,
+        _worker(request).lock(job.id),
+        _page_detail,
+        lib,
+        job,
+        entry,
+        _settings(request, job),
+    )
 
 
 def _edit_line(
@@ -738,6 +775,13 @@ def _docx(lib: Library, job: Job, settings: Settings) -> bytes:
     return build_docx(job.title, recs, len(job.included()), settings, Corrections.load(job.folder))
 
 
+def _export_bytes(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+
+
 def _pages_zip(job: Job) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -750,8 +794,9 @@ def _pages_zip(job: Job) -> bytes:
 async def export(doc_id: str, kind: str, request: Request, plain: bool = False) -> Response:
     lib, job = _job(request, doc_id)
     stem = safe_name(job.title, "document")
+    lock = _worker(request).lock(job.id)
     if kind == "docx":
-        data = await asyncio.to_thread(_docx, lib, job, _settings(request, job))
+        data = await asyncio.to_thread(_locked, lock, _docx, lib, job, _settings(request, job))
         headers = {"Content-Disposition": f'attachment; filename="{stem}.docx"'}
         return Response(
             data,
@@ -759,21 +804,24 @@ async def export(doc_id: str, kind: str, request: Request, plain: bool = False) 
             headers=headers,
         )
     if kind == "txt" and plain:
-        text = await asyncio.to_thread(_plain_text, lib, job, _settings(request, job))
+        text = await asyncio.to_thread(
+            _locked, lock, _plain_text, lib, job, _settings(request, job)
+        )
         return Response(text, media_type="text/plain; charset=utf-8")
     if kind == "pages.zip":
         if not (job.folder / "pages").is_dir():
             raise HTTPException(404, "Nothing has been read yet")
-        data = await asyncio.to_thread(_pages_zip, job)
+        data = await asyncio.to_thread(_locked, lock, _pages_zip, job)
         headers = {"Content-Disposition": f'attachment; filename="{stem} pages.zip"'}
         return Response(data, media_type="application/zip", headers=headers)
     if kind not in EXPORTS:
         raise HTTPException(404, "No such export")
     name, media, suffix = EXPORTS[kind]
-    path = job.folder / name
-    if not path.exists():
+    data = await asyncio.to_thread(_locked, lock, _export_bytes, job.folder / name)
+    if data is None:
         raise HTTPException(404, "Nothing has been read yet")
-    return FileResponse(path, media_type=media, filename=f"{stem}{suffix}")
+    headers = {"Content-Disposition": f'attachment; filename="{stem}{suffix}"'}
+    return Response(data, media_type=media, headers=headers)
 
 
 # --------------------------------------------------------------------------- #

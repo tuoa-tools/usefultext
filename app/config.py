@@ -5,9 +5,10 @@ person can change. Stored as settings.json in the app-data folder
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+from usefultext.fileio import read_text, write_text
 
 SETTINGS_FILE = "settings.json"
 ADD_MODES = ("copy", "move")
@@ -33,18 +34,15 @@ class AppConfig:
 
     @classmethod
     def load(cls, folder: Path) -> AppConfig:
-        p = Path(folder) / SETTINGS_FILE
-        if not p.exists():
+        text = read_text(Path(folder) / SETTINGS_FILE)
+        if text is None:
             return cls()
         try:
-            raw = json.loads(p.read_text(encoding="utf-8"))
+            raw = json.loads(text)
             known = {k: v for k, v in raw.items() if k in cls.__dataclass_fields__}
             return cls(**known)
         except Exception:
             return cls()
 
     def save(self, folder: Path) -> None:
-        p = Path(folder) / SETTINGS_FILE
-        tmp = p.with_suffix(".tmp")
-        tmp.write_text(json.dumps(asdict(self), indent=1), encoding="utf-8")
-        os.replace(tmp, p)
+        write_text(Path(folder) / SETTINGS_FILE, json.dumps(asdict(self), indent=1))

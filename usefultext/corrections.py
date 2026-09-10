@@ -15,10 +15,11 @@ here changes text on its own — a person does.
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+
+from .fileio import read_text, write_text
 
 CORRECTIONS_FILE = "corrections.json"
 CORRECTIONS_VERSION = 1
@@ -52,11 +53,11 @@ class Corrections:
     def load(cls, folder: Path | str) -> Corrections:
         """The corrections in `folder`, or none: a missing or unreadable file
         must never stop a run or an export."""
-        p = Path(folder) / CORRECTIONS_FILE
-        if not p.exists():
+        text = read_text(Path(folder) / CORRECTIONS_FILE)
+        if text is None:
             return cls()
         try:
-            raw = json.loads(p.read_text(encoding="utf-8"))
+            raw = json.loads(text)
             out = cls()
             for page_id, lines in raw.get("pages", {}).items():
                 out.pages[page_id] = {
@@ -76,10 +77,7 @@ class Corrections:
                 if lines
             },
         }
-        path = Path(folder) / CORRECTIONS_FILE
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_text(json.dumps(raw, ensure_ascii=False, indent=1), encoding="utf-8")
-        os.replace(tmp, path)
+        write_text(Path(folder) / CORRECTIONS_FILE, json.dumps(raw, ensure_ascii=False, indent=1))
 
     # --- editing ---
 

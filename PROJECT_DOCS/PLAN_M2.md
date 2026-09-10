@@ -507,6 +507,17 @@ the region boxes made a split feasible.
       numbers, right-aligned attribution), the real engine on a born-digital
       two-column PDF made at test time, column-top page numbers in
       furniture, the overlay hand-over, the API setting. 68 backend tests.
+- [x] Windows CI failed once on the picture-panel commit (no Python
+      changed): `test_correction_while_reading_takes_turns` got a 500 from
+      the document view while the worker was writing. On Windows
+      `os.replace` is refused while any other handle has the destination
+      open, and the document view could itself save job.json (the summary
+      counts) outside the lock. Now `usefultext/fileio.py` does every swap
+      (retried for up to 3 s on PermissionError) and every JSON read (same
+      retry; None for a missing file), and the API's document view, page
+      view, exports and summary counts run under the per-document lock so
+      they take turns with the worker instead of racing it. Exports are
+      read into memory under the lock rather than streamed from the file.
 - Done: the harness stays at 0.67% CER on the six single-column pages (no
   gutter is found on any of them); the magazine PDF reads left column then
   right on both spreads, "28"/"29"/"30" stripped, one printed-number gap

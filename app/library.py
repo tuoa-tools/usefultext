@@ -15,17 +15,17 @@ whole folder to the OS trash.
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 import uuid
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from usefultext import Settings
+from usefultext import Settings, fileio
 from usefultext.checks import job_warnings
 from usefultext.corrections import Corrections
 from usefultext.furniture import printed_order
@@ -120,11 +120,11 @@ class Job:
 
     @classmethod
     def load(cls, folder: Path) -> Job | None:
-        p = folder / JOB_FILE
-        if not p.exists():
+        text = fileio.read_text(folder / JOB_FILE)
+        if text is None:
             return None
         try:
-            raw = json.loads(p.read_text(encoding="utf-8"))
+            raw = json.loads(text)
         except Exception:
             return None
         job = cls(folder=folder)
@@ -147,10 +147,7 @@ class Job:
             "last_run": self.last_run,
             "pages": [e.to_dict() for e in self.pages],
         }
-        p = self.folder / JOB_FILE
-        tmp = p.with_suffix(".tmp")
-        tmp.write_text(json.dumps(raw, ensure_ascii=False, indent=1), encoding="utf-8")
-        os.replace(tmp, p)
+        fileio.write_text(self.folder / JOB_FILE, json.dumps(raw, ensure_ascii=False, indent=1))
 
     def entry(self, page_id: str) -> PageEntry | None:
         return next((e for e in self.pages if e.id == page_id), None)
@@ -396,10 +393,12 @@ class Library:
             state.save(job.folder)
 
     def refresh(self, job: Job, settings: Settings, lock=None) -> None:
-        """After a reorder, exclusion or correction: outputs and cached counts."""
-        if (job.folder / "state.json").exists():
-            refresh_outputs(job.folder, job.sources(), settings, lock=lock)
-        self.refresh_summary(job, settings)
+        """After a reorder, exclusion or correction: outputs and cached counts,
+        under the document's lock so the worker's own rewrites take turns."""
+        with lock if lock is not None else nullcontext():
+            if (job.folder / "state.json").exists():
+                refresh_outputs(job.folder, job.sources(), settings, lock=lock)
+            self.refresh_summary(job, settings)
 
     def refresh_summary(self, job: Job, settings: Settings) -> dict:
         state = self.state(job)
@@ -456,9 +455,9 @@ class Library:
                 img = ImageOps.exif_transpose(im).convert("RGB")
         img.thumbnail((THUMB_LONG_EDGE, THUMB_LONG_EDGE))
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
+        tmp = fileio.tmp_path(path)
         img.save(tmp, "JPEG", quality=70, optimize=True)
-        os.replace(tmp, path)
+        fileio.replace(tmp, path)
         return path
 
     def preview(self, job: Job, entry: PageEntry) -> Path | None:
@@ -468,15 +467,11 @@ class Library:
     # --- the spellcheck ignore list ---
 
     def dictionary(self) -> list[str]:
-        p = self.root / DICTIONARY_FILE
-        if not p.exists():
-            return []
-        return [w for w in p.read_text(encoding="utf-8").splitlines() if w.strip()]
+        text = fileio.read_text(self.root / DICTIONARY_FILE) or ""
+        return [w for w in text.splitlines() if w.strip()]
 
     def set_dictionary(self, words: list[str]) -> list[str]:
         cleaned = sorted({w.strip() for w in words if w.strip()}, key=str.lower)
-        p = self.root / DICTIONARY_FILE
-        tmp = p.with_suffix(".tmp")
-        tmp.write_text("\n".join(cleaned) + ("\n" if cleaned else ""), encoding="utf-8")
-        os.replace(tmp, p)
+        text = "\n".join(cleaned) + ("\n" if cleaned else "")
+        fileio.write_text(self.root / DICTIONARY_FILE, text)
         return cleaned

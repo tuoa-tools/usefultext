@@ -10,11 +10,12 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageOps
+
+from . import fileio
 
 SUPPORTED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".tif", ".tiff", ".bmp", ".webp"}
 SUPPORTED_PDF_EXTS = {".pdf"}
@@ -126,7 +127,7 @@ def write_preview(
     small, _ = downscale(rotate(img, rotation), long_edge)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp = fileio.tmp_path(path)
     small.convert("RGB").save(tmp, "JPEG", quality=quality, optimize=True)
-    os.replace(tmp, path)
+    fileio.replace(tmp, path)
     return small.size
