@@ -17,7 +17,7 @@ and column detection in `layout.py`. Section 6 is current._
 ```
 doc_reader.py            CLI only — argument parsing and progress printing
 phototext/               the pipeline (import this from the Milestone 2 server)
-  ocr.py                 RapidOCR wrapper, copied from the redaction POC and extended
+  ocr.py                 RapidOCR wrapper from an earlier prototype, extended
   preprocess.py          load (HEIC, EXIF), downscale, blur check, rotation helpers
   inputs.py              file discovery, natural/EXIF ordering, PDF page expansion
   pipeline.py            process_page(), run_job() — resumable, per-page writes
@@ -34,8 +34,8 @@ README.md                usage, outputs, heuristics, evaluation results
 ```
 
 Git history: four commits on `main`. `Documents/`, `output*/`,
-`fixtures/derived/` and `redaction_detection_poc/` are ignored; the POC folder
-is reference material only and must not be edited or committed.
+`fixtures/derived/` and a local reference folder (see `.gitignore`) are ignored;
+that folder is reference material only and must not be edited or committed.
 
 Environment: Python 3.13 (x86_64 macOS), `.venv` with `requirements.txt`
 (rapidocr 3.9.2, onnxruntime 1.23, pillow, pillow-heif, pymupdf, numpy).

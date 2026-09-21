@@ -42,7 +42,11 @@ export default function App() {
   const health = useQuery({
     queryKey: ['health'],
     queryFn: getHealth,
-    refetchInterval: 60_000,
+    // Every 30 s, not 60: a browser lets a tab that has been hidden for a while run its
+    // timers only once a minute, so a 60 s ping could land almost two minutes after the
+    // last one, which is the server's limit. Someone who leaves this tab behind another
+    // window and comes back should find the app still there.
+    refetchInterval: 30_000,
     refetchIntervalInBackground: true,
   });
 

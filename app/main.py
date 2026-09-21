@@ -95,11 +95,12 @@ async def lifespan(app: FastAPI):
 
 IDLE_SECONDS = 120.0  # no /api/health ping for this long, and nothing to do → exit
 IDLE_CHECK_SECONDS = 15.0
+CLOCK_GAP_SECONDS = 2 * IDLE_CHECK_SECONDS  # a check this late: the machine was asleep
 
 
 def idle_expired(state, now: float) -> bool:
     """Desktop mode with a browser tab as the UI (the launcher sets
-    `idle_shutdown`): the page pings /api/health every minute, so two minutes
+    `idle_shutdown`): the page pings /api/health every 30 seconds, so two minutes
     of silence means the tab is gone. A document being read keeps the server
     alive until it is done."""
     if not getattr(state, "desktop", False) or not getattr(state, "idle_shutdown", False):
@@ -110,10 +111,24 @@ def idle_expired(state, now: float) -> bool:
     return now - getattr(state, "last_ping", now) >= IDLE_SECONDS
 
 
+def woke_from_sleep(elapsed: float) -> bool:
+    """The watch sleeps IDLE_CHECK_SECONDS at a time. If far longer than that has passed,
+    the machine was asleep (or the process suspended), and the page was asleep with it:
+    its silence says nothing. On Windows the monotonic clock counts through sleep, so
+    without this the first check after the lid is opened sees two minutes of "silence"
+    and exits before the page has had the chance to ping again."""
+    return elapsed >= CLOCK_GAP_SECONDS
+
+
 async def _idle_watch(app: FastAPI) -> None:
+    last_check = time.monotonic()
     while True:
         await asyncio.sleep(IDLE_CHECK_SECONDS)
-        if idle_expired(app.state, time.monotonic()):
+        now = time.monotonic()
+        if woke_from_sleep(now - last_check):
+            app.state.last_ping = now  # a fresh two minutes for the page to say it is there
+        last_check = now
+        if idle_expired(app.state, now):
             log.info("no UI for %.0f s and nothing to do: exiting", IDLE_SECONDS)
             app.state.quit_requested = True
             if app.state.on_quit:
@@ -391,7 +406,7 @@ async def launch(token: str, request: Request) -> RedirectResponse:
 
 @app.get("/api/health")
 async def health(request: Request) -> dict:
-    """Also the UI's keep-alive: the page calls this every minute (see idle_expired)."""
+    """Also the UI's keep-alive: the page calls this every 30 s (see idle_expired)."""
     state = request.app.state
     state.last_ping = time.monotonic()
     return {

@@ -14,7 +14,7 @@ transcript plus per-page text.
 ## Non-negotiable design decisions (settled — do not re-derive)
 
 1. **OCR engine: RapidOCR (onnxruntime, CPU).** The wrapper already exists —
-   `ocr.py` in this repo, proven in production on real scanned documents.
+   `ocr.py` in this repo, written for an earlier prototype and known to work.
    Reuse it; extend rather than replace. No cloud OCR, no LLM-decoder OCR
    (hallucination risk for a transcription tool).
 2. **Models bundled at build time.** RapidOCR downloads models on first use

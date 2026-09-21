@@ -114,3 +114,42 @@ def test_bundled_models_dir_only_when_the_models_are_there(tmp_path, monkeypatch
     monkeypatch.setenv("USEFULTEXT_MODEL_DIR", "/chosen/by/hand")
     launcher.point_at_bundled_models()  # a person's choice wins
     assert os.environ["USEFULTEXT_MODEL_DIR"] == "/chosen/by/hand"
+
+
+def test_waking_from_sleep_is_not_silence_from_the_tab(monkeypatch):
+    """Close the lid for an hour, open it: on Windows the clock counted the hour, so the
+    first check would see an hour without a ping. The watch must give the page its two
+    minutes again rather than exit under someone who has just come back."""
+    import asyncio
+
+    assert main_module.woke_from_sleep(main_module.IDLE_CHECK_SECONDS + 0.5) is False
+    assert main_module.woke_from_sleep(3600.0) is True
+
+    quits = []
+    state = SimpleNamespace(
+        desktop=True,
+        idle_shutdown=True,
+        last_ping=0.0,
+        worker=SimpleNamespace(progress={}),
+        quit_requested=False,
+        on_quit=lambda: quits.append(True),
+    )
+    clock = iter([0.0, 3600.0, 3615.0])  # start; the check after an hour asleep; the next
+
+    async def no_wait(_seconds):
+        return None
+
+    def monotonic():
+        try:
+            return next(clock)
+        except StopIteration:
+            raise asyncio.CancelledError from None
+
+    monkeypatch.setattr(main_module.asyncio, "sleep", no_wait)
+    monkeypatch.setattr(main_module.time, "monotonic", monotonic)
+    try:
+        asyncio.run(main_module._idle_watch(SimpleNamespace(state=state)))
+    except asyncio.CancelledError:
+        pass
+    assert quits == []  # it did not exit on waking
+    assert state.last_ping == 3600.0  # the page was given a fresh start

@@ -1,7 +1,7 @@
 """ocr.py — OCR backend (RapidOCR / ONNX Runtime, CPU).
 
-Copied from redaction_detection_poc/ocr.py (proven on real scanned documents)
-and extended for UsefulText. The original API is kept intact:
+Grew out of a small RapidOCR wrapper from an earlier prototype and was extended
+for UsefulText. That wrapper's API is kept intact:
 
   available() / import_error()      lazy singleton engine, never crashes
   OcrPageResult(text, mean_conf, n_regions) with .low_confidence
