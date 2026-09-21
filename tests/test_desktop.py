@@ -145,8 +145,10 @@ def test_waking_from_sleep_is_not_silence_from_the_tab(monkeypatch):
         except StopIteration:
             raise asyncio.CancelledError from None
 
-    monkeypatch.setattr(main_module.asyncio, "sleep", no_wait)
-    monkeypatch.setattr(main_module.time, "monotonic", monotonic)
+    # Only as the watch sees them: the event loop running this test reads the real clock,
+    # and would otherwise use up the fake one.
+    monkeypatch.setattr(main_module, "asyncio", SimpleNamespace(sleep=no_wait))
+    monkeypatch.setattr(main_module, "time", SimpleNamespace(monotonic=monotonic))
     try:
         asyncio.run(main_module._idle_watch(SimpleNamespace(state=state)))
     except asyncio.CancelledError:
